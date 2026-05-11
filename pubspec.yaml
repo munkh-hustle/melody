@@ -36,6 +36,10 @@ dependencies:
   rxdart: ^0.28.0
   open_file: ^3.3.2
   share_plus: ^10.1.2
+  
+  # Background tasks
+  workmanager: ^0.5.2
+  flutter_isolate: ^2.0.2
 
 dev_dependencies:
   flutter_test:

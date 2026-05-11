@@ -7,6 +7,7 @@ import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:workmanager/workmanager.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -141,8 +142,8 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
     _navigateToFolder(parentPath.isEmpty ? '/' : parentPath);
   }
 
-  /// Upload a file
-  Future<void> _uploadFile() async {
+  /// Upload a file - with option to run in background
+  Future<void> _uploadFile({bool useBackground = false}) async {
     // Prevent multiple simultaneous file picker invocations
     if (_isPickingFile) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -202,47 +203,101 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         if (confirmed != true) return;
       }
       
-      // Create a controller for progress updates
-      double currentProgress = 0.0;
+      // Ask user if they want to upload in background
+      if (!useBackground && fileSizeMB > 50) {
+        final useBg = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Upload Options'),
+            content: Text(
+              'This file is ${fileSizeMB.toStringAsFixed(1)} MB. Would you like to:\n\n'
+              '• Upload in foreground (you can see progress but must keep app open)\n'
+              '• Upload in background (you can close the app)',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false), // Foreground
+                child: const Text('Foreground'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true), // Background
+                child: const Text('Background'),
+              ),
+            ],
+          ),
+        );
+        
+        if (useBg == true) {
+          useBackground = true;
+        }
+      }
       
-      // Show progress dialog with stream
-      final progressDialog = ProgressDialog(
-        title: 'Uploading ${result.files.first.name}',
-        message: '${fileSizeMB.toStringAsFixed(1)} MB - Please wait...',
-        initialProgress: 0.0,
-        progressStream: _disboxService.uploadProgress,
-      );
+      // Get webhook URL and account ID for background upload
+      final prefs = await SharedPreferences.getInstance();
+      final webhookUrl = prefs.getString('webhook_url');
+      final accountId = prefs.getString('account_id');
       
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => progressDialog,
-      );
-
-      try {
-        await _disboxService.uploadFile(
-          file,
+      if (useBackground && webhookUrl != null) {
+        // Schedule background upload
+        await _scheduleBackgroundUpload(
+          filePath: filePath,
+          fileName: result.files.first.name!,
           folderPath: _currentPath,
-          onProgress: (current, total) {
-            setState(() {
-              currentProgress = current / total;
-            });
-          },
+          webhookUrl: webhookUrl,
+          accountId: accountId,
+        );
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Upload started in background. You can close the app.'),
+            ),
+          );
+        }
+      } else {
+        // Foreground upload with progress
+        // Create a controller for progress updates
+        double currentProgress = 0.0;
+        
+        // Show progress dialog with stream
+        final progressDialog = ProgressDialog(
+          title: 'Uploading ${result.files.first.name}',
+          message: '${fileSizeMB.toStringAsFixed(1)} MB - Please wait...',
+          initialProgress: 0.0,
+          progressStream: _disboxService.uploadProgress,
+        );
+        
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => progressDialog,
         );
 
-        if (mounted) Navigator.pop(context); // Close progress dialog
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('File uploaded successfully')),
-        );
-        
-        _loadFiles(); // Refresh file list
-      } catch (e) {
-        if (mounted) Navigator.pop(context); // Close progress dialog
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e')),
-        );
+        try {
+          await _disboxService.uploadFile(
+            file,
+            folderPath: _currentPath,
+            onProgress: (current, total) {
+              setState(() {
+                currentProgress = current / total;
+              });
+            },
+          );
+
+          if (mounted) Navigator.pop(context); // Close progress dialog
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('File uploaded successfully')),
+          );
+          
+          _loadFiles(); // Refresh file list
+        } catch (e) {
+          if (mounted) Navigator.pop(context); // Close progress dialog
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Upload failed: $e')),
+          );
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -250,6 +305,39 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       );
     } finally {
       if (mounted) setState(() => _isPickingFile = false);
+    }
+  }
+  
+  /// Schedule a background upload task
+  Future<void> _scheduleBackgroundUpload({
+    required String filePath,
+    required String fileName,
+    required String folderPath,
+    required String webhookUrl,
+    String? accountId,
+  }) async {
+    try {
+      // Register a unique task for this upload
+      final taskId = 'upload_${DateTime.now().millisecondsSinceEpoch}';
+      
+      await Workmanager().registerOneOffTask(
+        taskId,
+        'upload_file',
+        initialDelay: const Duration(seconds: 1),
+        inputData: {
+          'filePath': filePath,
+          'fileName': fileName,
+          'folderPath': folderPath,
+          'webhookUrl': webhookUrl,
+          'accountId': accountId ?? '',
+        },
+        existingWorkPolicy: ExistingWorkPolicy.append,
+      );
+      
+      debugPrint('Background upload scheduled: $taskId');
+    } catch (e) {
+      debugPrint('Failed to schedule background upload: $e');
+      rethrow;
     }
   }
 

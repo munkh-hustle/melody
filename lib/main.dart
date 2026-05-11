@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:workmanager/workmanager.dart';
+import 'services/background_upload_service.dart';
 
 import 'screens/import_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize WorkManager for background tasks
+  await Workmanager().initialize(
+    callbackDispatcher,
+    isInDebugMode: true, // Set to false in production
+  );
   
   runApp(const DisboxApp());
 }
