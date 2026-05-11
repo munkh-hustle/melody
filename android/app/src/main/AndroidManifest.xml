@@ -59,8 +59,7 @@
             android:name="id.flutter.flutter_background_service.BackgroundService"
             android:foregroundServiceType="dataSync"
             android:exported="true"
-            android:stopWithTask="false"
-            tools:replace="android:exported">
+            android:stopWithTask="false">
             <intent-filter>
                 <action android:name="id.flutter.flutter_background_service.ACTION_NOTIFICATION_CHANNEL" />
             </intent-filter>
