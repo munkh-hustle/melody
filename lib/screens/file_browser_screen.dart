@@ -298,9 +298,22 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
           );
         }
       } else {
-        // Foreground upload with progress
+        // Foreground upload with progress and notifications
         // Create a controller for progress updates
         double currentProgress = 0.0;
+        
+        // Show initial notification for foreground upload
+        final service = FlutterBackgroundService();
+        try {
+          await service.startService();
+          await Future.delayed(const Duration(milliseconds: 200));
+          service.invoke('notification', {
+            'title': 'Uploading ${result.files.first.name}',
+            'content': '${fileSizeMB.toStringAsFixed(1)} MB - Starting...',
+          });
+        } catch (e) {
+          debugPrint('Failed to start service for notification: $e');
+        }
         
         // Show progress dialog with stream
         final progressDialog = ProgressDialog(
@@ -324,22 +337,69 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
               setState(() {
                 currentProgress = current / total;
               });
+              
+              // Update notification with progress
+              final progressPercent = ((current / total) * 100).toInt();
+              try {
+                service.invoke('notification', {
+                  'title': 'Uploading ${result.files.first.name}',
+                  'content': '$progressPercent% complete',
+                });
+              } catch (e) {
+                debugPrint('Failed to update notification: $e');
+              }
             },
           );
 
           if (mounted) Navigator.pop(context); // Close progress dialog
+          
+          // Update notification to show completion
+          try {
+            service.invoke('notification', {
+              'title': 'Upload Complete',
+              'content': '${result.files.first.name} uploaded successfully',
+            });
+          } catch (e) {
+            debugPrint('Failed to send completion notification: $e');
+          }
           
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('File uploaded successfully')),
           );
           
           _loadFiles(); // Refresh file list
+          
+          // Stop service after a delay
+          try {
+            await Future.delayed(const Duration(seconds: 2));
+            await service.stopSelf();
+          } catch (e) {
+            debugPrint('Failed to stop service: $e');
+          }
         } catch (e) {
           if (mounted) Navigator.pop(context); // Close progress dialog
+          
+          // Update notification to show failure
+          try {
+            service.invoke('notification', {
+              'title': 'Upload Failed',
+              'content': 'Error: ${e.toString()}',
+            });
+          } catch (err) {
+            debugPrint('Failed to send error notification: $err');
+          }
           
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Upload failed: $e')),
           );
+          
+          // Stop service after a delay
+          try {
+            await Future.delayed(const Duration(seconds: 2));
+            await service.stopSelf();
+          } catch (err) {
+            debugPrint('Failed to stop service: $err');
+          }
         }
       }
     } catch (e) {
