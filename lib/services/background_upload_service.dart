@@ -1,43 +1,59 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:workmanager/workmanager.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import 'dart:typed_data';
 import '../models/disbox_file.dart';
 
-/// Callback function for background upload tasks.
-/// This runs in a separate isolate, so it must be a top-level function.
+/// Initialize background service for uploads.
 @pragma('vm:entry-point')
-void callbackDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
-    debugPrint('Background task started: $task');
-    debugPrint('Input data: $inputData');
+Future<void> initializeBackgroundService() async {
+  final service = FlutterBackgroundService();
+  
+  await service.configure(
+    androidConfiguration: AndroidConfiguration(
+      onStart: onStart,
+      autoStart: false,
+      isForegroundMode: true,
+      notificationChannelId: 'disbox_upload_channel',
+      initialNotificationTitle: 'Disbox Upload',
+      initialNotificationContent: 'Initializing...',
+      foregroundServiceNotificationId: 888,
+    ),
+    iosConfiguration: IosConfiguration(),
+  );
+}
+
+/// Background service entry point.
+@pragma('vm:entry-point')
+void onStart(ServiceInstance service) async {
+  DartPluginRegistrant.ensureInitialized();
+  
+  service.on('upload').listen((event) async {
+    final filePath = event!['filePath'] as String;
+    final webhookUrl = event['webhookUrl'] as String;
+    final folderPath = event['folderPath'] as String? ?? '/';
+    final fileName = event['fileName'] as String;
+    final accountId = event['accountId'] as String?;
+    
+    debugPrint('Background upload started: $fileName');
     
     try {
-      // Initialize Hive for background task
+      // Initialize Hive
       await Hive.initFlutter();
-      
-      final filePath = inputData?['filePath'] as String?;
-      final webhookUrl = inputData?['webhookUrl'] as String?;
-      final folderPath = inputData?['folderPath'] as String? ?? '/';
-      final fileName = inputData?['fileName'] as String?;
-      final accountId = inputData?['accountId'] as String?;
-      
-      if (filePath == null || webhookUrl == null || fileName == null) {
-        debugPrint('Missing required input data');
-        return Future.value(false);
-      }
       
       final file = File(filePath);
       if (!await file.exists()) {
         debugPrint('File does not exist: $filePath');
-        return Future.value(false);
+        service.invoke('error', {'message': 'File not found'});
+        return;
       }
       
-      // Perform the upload using Dio directly
+      // Perform upload
       final result = await _uploadFileInBackground(
         file,
         webhookUrl,
@@ -46,13 +62,28 @@ void callbackDispatcher() {
         accountId,
       );
       
-      debugPrint('Background upload completed: $result');
-      return Future.value(result);
+      if (result) {
+        service.invoke('complete', {'success': true});
+        debugPrint('Background upload completed successfully');
+      } else {
+        service.invoke('complete', {'success': false});
+        debugPrint('Background upload failed');
+      }
     } catch (e) {
-      debugPrint('Background task error: $e');
-      return Future.value(false);
+      debugPrint('Background upload error: $e');
+      service.invoke('error', {'message': e.toString()});
+    } finally {
+      // Stop the service after completion
+      await service.stopSelf();
     }
   });
+}
+
+/// Callback function for background upload tasks.
+/// This runs in a separate isolate, so it must be a top-level function.
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  // This is kept for compatibility but not used with flutter_background_service
 }
 
 /// Upload a file in the background isolate.

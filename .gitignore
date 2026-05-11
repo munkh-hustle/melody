@@ -1,19 +1,18 @@
 ```
-# Dependencies
-.dart_tool/
-.packages
-.pub/
-
 # Build artifacts
 build/
 *.apk
 *.aab
 *.so
 
+# Dependencies
+node_modules/
+vendor/
+
 # Logs
 *.log
 
-# Environment variables
+# Environment
 .env
 .env.local
 *.env.*
@@ -21,11 +20,27 @@ build/
 # IDE files
 .vscode/
 .idea/
-*.iml
-*.ipr
-*.iws
+*.swp
+*.swo
 
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Dart/Flutter specific
+.dart_tool/
+.flutter-plugins
+.flutter-plugin-dependencies
+.packages
+.pub-cache/
+*.g.dart
+*.freezed.dart
+
+# Coverage
+coverage/
+htmlcov/
+
+# Temporary files
+*.tmp
+*.temp
 ```

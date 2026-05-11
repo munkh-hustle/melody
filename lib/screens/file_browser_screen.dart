@@ -7,7 +7,7 @@ import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:workmanager/workmanager.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -17,6 +17,7 @@ import '../services/disbox_service.dart';
 import '../models/disbox_file.dart';
 import '../widgets/file_list_tile.dart';
 import '../widgets/progress_dialog.dart';
+import '../services/background_upload_service.dart';
 
 /// Main file browser screen for Disbox.
 /// 
@@ -308,7 +309,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
     }
   }
   
-  /// Schedule a background upload task
+  /// Schedule a background upload task using flutter_background_service
   Future<void> _scheduleBackgroundUpload({
     required String filePath,
     required String fileName,
@@ -317,24 +318,34 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
     String? accountId,
   }) async {
     try {
-      // Register a unique task for this upload
-      final taskId = 'upload_${DateTime.now().millisecondsSinceEpoch}';
+      final service = FlutterBackgroundService();
       
-      await Workmanager().registerOneOffTask(
-        taskId,
-        'upload_file',
-        initialDelay: const Duration(seconds: 1),
-        inputData: {
-          'filePath': filePath,
-          'fileName': fileName,
-          'folderPath': folderPath,
-          'webhookUrl': webhookUrl,
-          'accountId': accountId ?? '',
-        },
-        existingWorkPolicy: ExistingWorkPolicy.append,
-      );
+      // Start the service
+      await service.startService();
       
-      debugPrint('Background upload scheduled: $taskId');
+      // Wait a moment for service to initialize
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Send upload command to the background service
+      service.invoke('upload', {
+        'filePath': filePath,
+        'fileName': fileName,
+        'folderPath': folderPath,
+        'webhookUrl': webhookUrl,
+        'accountId': accountId ?? '',
+      });
+      
+      debugPrint('Background upload scheduled');
+      
+      // Show notification to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Upload started in background. You can close the app.'),
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
     } catch (e) {
       debugPrint('Failed to schedule background upload: $e');
       rethrow;
