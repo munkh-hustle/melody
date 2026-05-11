@@ -58,8 +58,13 @@
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
             android:foregroundServiceType="dataSync"
-            android:exported="false"
-            tools:replace="android:exported" />
+            android:exported="true"
+            android:stopWithTask="false"
+            tools:replace="android:exported">
+            <intent-filter>
+                <action android:name="id.flutter.flutter_background_service.ACTION_NOTIFICATION_CHANNEL" />
+            </intent-filter>
+        </service>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
