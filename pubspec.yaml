@@ -35,7 +35,7 @@ dependencies:
   mime: ^2.0.0
   rxdart: ^0.28.0
   open_file: ^3.3.2
-  share_plus: ^10.1.2
+  share_plus: ^9.0.0
   
   # Background service for uploads
   flutter_background_service: ^5.0.5

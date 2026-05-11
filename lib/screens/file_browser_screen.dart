@@ -372,7 +372,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
           // Stop service after a delay
           try {
             await Future.delayed(const Duration(seconds: 2));
-            await FlutterBackgroundService().invoke('stopService');
+            FlutterBackgroundService().invoke('stopService');
           } catch (e) {
             debugPrint('Failed to stop service: $e');
           }
@@ -396,7 +396,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
           // Stop service after a delay
           try {
             await Future.delayed(const Duration(seconds: 2));
-            await FlutterBackgroundService().invoke('stopService');
+            FlutterBackgroundService().invoke('stopService');
           } catch (err) {
             debugPrint('Failed to stop service: $err');
           }
