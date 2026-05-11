@@ -31,7 +31,8 @@ Future<void> initializeBackgroundService() async {
 /// Background service entry point.
 @pragma('vm:entry-point')
 void onStart(ServiceInstance service) async {
-  DartPluginRegistrant.ensureInitialized();
+  // DartPluginRegistrant is not needed for flutter_background_service
+  // The plugin handles isolate initialization automatically
   
   service.on('upload').listen((event) async {
     final filePath = event!['filePath'] as String;
