@@ -20,7 +20,6 @@ Future<void> initializeBackgroundService() async {
       autoStart: false,
       isForegroundMode: true,
       notificationChannelId: 'disbox_upload_channel',
-      notificationChannelName: 'Disbox Upload Service',
       initialNotificationTitle: 'Disbox Upload',
       initialNotificationContent: 'Initializing...',
       foregroundServiceNotificationId: 888,
