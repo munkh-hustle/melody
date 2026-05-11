@@ -1,0 +1,46 @@
+name: flutter_disbox
+description: A Flutter Android app for cloud storage using Discord webhooks as backend.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # HTTP client for Discord API calls
+  dio: ^5.4.0
+  
+  # Local storage for caching and settings
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  shared_preferences: ^2.2.2
+  
+  # File handling
+  path_provider: ^2.1.1
+  file_picker: ^11.0.2
+  permission_handler: ^12.0.1
+  device_info_plus: ^11.1.0
+  
+  # UI components
+  cupertino_icons: ^1.0.6
+  provider: ^6.1.1
+  intl: ^0.20.2
+  
+  # Utilities
+  crypto: ^3.0.3
+  path: ^1.8.3
+  mime: ^2.0.0
+  rxdart: ^0.28.0
+  open_file: ^3.3.2
+  share_plus: ^10.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
