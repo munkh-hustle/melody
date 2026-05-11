@@ -22,18 +22,28 @@ venv/
 dist/
 build/
 target/
-*.log
-*.tmp
-*.swp
+.gradle/
+
+# Python caches
+.mypy_cache/
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
 
 # Editors
 .vscode/
 .idea/
+*.swp
+*.swo
+*.tmp
 
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
 
 # Compressed files
 *.zip
@@ -58,10 +68,3 @@ htmlcov/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
-
-# Gradle
-.gradle/
-
-# Python specific
-.mypy_cache/
-.pytest_cache/
