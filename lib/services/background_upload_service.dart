@@ -23,8 +23,6 @@ Future<void> initializeBackgroundService() async {
       initialNotificationTitle: 'Disbox Upload',
       initialNotificationContent: 'Initializing...',
       foregroundServiceNotificationId: 888,
-      // Important: Set to false to allow user to close the app while service runs
-      stopWithTask: false,
     ),
     iosConfiguration: IosConfiguration(),
   );
@@ -37,10 +35,11 @@ void onStart(ServiceInstance service) async {
   // The plugin handles isolate initialization automatically
   
   // Create notification channel and show initial notification
-  await service.setForegroundNotificationInfo(
-    title: 'Disbox Upload',
-    content: 'Initializing...',
-  );
+  // Use invoke to update notification since setForegroundNotificationInfo doesn't exist
+  service.invoke('notification', {
+    'title': 'Disbox Upload',
+    'content': 'Initializing...',
+  });
   
   service.on('upload').listen((event) async {
     final filePath = event!['filePath'] as String;
@@ -52,10 +51,10 @@ void onStart(ServiceInstance service) async {
     debugPrint('Background upload started: $fileName');
     
     // Update notification to show upload starting
-    await service.setForegroundNotificationInfo(
-      title: 'Uploading $fileName',
-      content: 'Starting upload...',
-    );
+    service.invoke('notification', {
+      'title': 'Uploading $fileName',
+      'content': 'Starting upload...',
+    });
     
     try {
       // Initialize Hive
@@ -65,10 +64,10 @@ void onStart(ServiceInstance service) async {
       if (!await file.exists()) {
         debugPrint('File does not exist: $filePath');
         service.invoke('error', {'message': 'File not found'});
-        await service.setForegroundNotificationInfo(
-          title: 'Upload Failed',
-          content: 'File not found: $fileName',
-        );
+        service.invoke('notification', {
+          'title': 'Upload Failed',
+          'content': 'File not found: $fileName',
+        });
         return;
       }
       
@@ -85,25 +84,25 @@ void onStart(ServiceInstance service) async {
       if (result) {
         service.invoke('complete', {'success': true});
         debugPrint('Background upload completed successfully');
-        await service.setForegroundNotificationInfo(
-          title: 'Upload Complete',
-          content: '$fileName uploaded successfully',
-        );
+        service.invoke('notification', {
+          'title': 'Upload Complete',
+          'content': '$fileName uploaded successfully',
+        });
       } else {
         service.invoke('complete', {'success': false});
         debugPrint('Background upload failed');
-        await service.setForegroundNotificationInfo(
-          title: 'Upload Failed',
-          content: 'Failed to upload $fileName',
-        );
+        service.invoke('notification', {
+          'title': 'Upload Failed',
+          'content': 'Failed to upload $fileName',
+        });
       }
     } catch (e) {
       debugPrint('Background upload error: $e');
       service.invoke('error', {'message': e.toString()});
-      await service.setForegroundNotificationInfo(
-        title: 'Upload Error',
-        content: 'Error: ${e.toString()}',
-      );
+      service.invoke('notification', {
+        'title': 'Upload Error',
+        'content': 'Error: ${e.toString()}',
+      });
     } finally {
       // Stop the service after completion
       await Future.delayed(const Duration(seconds: 2)); // Delay to let user see notification
@@ -155,10 +154,10 @@ Future<bool> _uploadFileInBackground(
     
     // Update notification with file size
     final fileSizeMB = (fileSize / (1024 * 1024)).toStringAsFixed(1);
-    await service?.setForegroundNotificationInfo(
-      title: 'Uploading $fileName',
-      content: '$fileSizeMB MB - Starting...',
-    );
+    service?.invoke('notification', {
+      'title': 'Uploading $fileName',
+      'content': '$fileSizeMB MB - Starting...',
+    });
     
     // For small files, upload directly
     if (fileSize <= chunkSize) {
@@ -232,10 +231,10 @@ Future<bool> _uploadFileInBackground(
         
         // Update notification with progress
         final progress = ((i + 1) / numChunks * 100).toInt();
-        await service?.setForegroundNotificationInfo(
-          title: 'Uploading $fileName',
-          content: '$progress% complete',
-        );
+        service?.invoke('notification', {
+          'title': 'Uploading $fileName',
+          'content': '$progress% complete',
+        });
       }
       
       debugPrint('Background upload completed successfully');
@@ -318,10 +317,10 @@ Future<bool> _uploadFileInBackground(
           
           // Update notification with progress
           final progress = ((i + 1) / numChunks * 100).toInt();
-          await service?.setForegroundNotificationInfo(
-            title: 'Uploading $fileName',
-            content: '$progress% complete ($fileSizeMB MB)',
-          );
+          service?.invoke('notification', {
+            'title': 'Uploading $fileName',
+            'content': '$progress% complete ($fileSizeMB MB)',
+          });
         }
       } finally {
         await randomAccessFile.close();

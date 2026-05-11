@@ -39,12 +39,54 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
   bool _isInitialized = false;
   bool _isPickingFile = false; // Prevent multiple file picker invocations
   int _buildCount = 0; // Track build count to detect infinite loops
+  FlutterBackgroundService? _backgroundService;
 
   @override
   void initState() {
     super.initState();
     _disboxService = DisboxService();
     _initializeService();
+    _setupBackgroundServiceListener();
+  }
+
+  /// Setup listener for background service notifications
+  void _setupBackgroundServiceListener() {
+    _backgroundService = FlutterBackgroundService();
+    
+    // Listen for notification updates from background service
+    _backgroundService!.on('notification').listen((event) {
+      if (event != null) {
+        final title = event['title'] as String? ?? '';
+        final content = event['content'] as String? ?? '';
+        debugPrint('[NOTIFICATION] $title: $content');
+        // The notification is handled by the service itself
+        // This is just for logging purposes
+      }
+    });
+    
+    // Listen for completion events
+    _backgroundService!.on('complete').listen((event) {
+      if (event != null) {
+        final success = event['success'] as bool? ?? false;
+        debugPrint('[UPLOAD COMPLETE] Success: $success');
+      }
+    });
+    
+    // Listen for error events
+    _backgroundService!.on('error').listen((event) {
+      if (event != null) {
+        final message = event['message'] as String? ?? 'Unknown error';
+        debugPrint('[UPLOAD ERROR] $message');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Upload error: $message'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    });
   }
 
   /// Initialize the service with the saved webhook URL
@@ -348,7 +390,14 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       }
     } catch (e) {
       debugPrint('Failed to schedule background upload: $e');
-      rethrow;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to start background upload: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -1249,6 +1298,13 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       }
       print('[ClearCache ERROR] Failed to clear cache: $e');
     }
+  }
+
+  @override
+  void dispose() {
+    // Cleanup background service listeners if needed
+    // The service will continue running in the background
+    super.dispose();
   }
 
   @override

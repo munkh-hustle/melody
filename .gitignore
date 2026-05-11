@@ -1,23 +1,46 @@
 ```
-# Build outputs
-build/
-.gradle/
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+*.class
+*.exe
+*.dll
+*.so
+*.a
+*.out
 
-# Dependency directories
+# Dependencies
 node_modules/
-vendor/
-
-# Logs
-*.log
-
-# Environment variables
+venv/
+.venv/
 .env
 .env.local
-*.env.*
+.env.*
 
-# IDE files
-.vscode/
-.idea/
+# Build directories
+dist/
+build/
+target/
+.gradle/
+
+# Python specific
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.so
+.PyInstaller/
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage/
+
+# Logs and temp files
+*.log
+*.tmp
 *.swp
 *.swo
 
@@ -25,28 +48,31 @@ vendor/
 .DS_Store
 Thumbs.db
 
-# Coverage reports
-coverage/
-htmlcov/
+# Editors
+.vscode/
+.idea/
 
-# Python specific
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-*.egg-info/
-.eggs/
-
-# Dart/Flutter specific
-.dart_tool/
-.packages
-.pub-cache/
-.pub/
-flutter/ephemeral/
-
-# Temporary files
-*.tmp
-*.temp
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```
