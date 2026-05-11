@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -15,14 +14,6 @@ import '../models/disbox_file.dart';
 Future<void> initializeBackgroundService() async {
   final service = FlutterBackgroundService();
   
-  // Create notification channel for Android 13+
-  if (Platform.isAndroid) {
-    await service.setForegroundNotificationInfo(
-      title: 'Disbox Upload',
-      content: 'Uploading files...',
-    );
-  }
-  
   await service.configure(
     androidConfiguration: AndroidConfiguration(
       onStart: onStart,
@@ -32,10 +23,6 @@ Future<void> initializeBackgroundService() async {
       initialNotificationTitle: 'Disbox Upload',
       initialNotificationContent: 'Initializing...',
       foregroundServiceNotificationId: 888,
-      importance: Importance.low,
-      priority: Priority.low,
-      ongoing: true,
-      autoCancel: false,
     ),
     iosConfiguration: IosConfiguration(),
   );
