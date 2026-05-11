@@ -1,29 +1,24 @@
 ```
-# Android build artifacts
+# Android build outputs
 *.apk
 *.aar
 *.dex
-*.so
 
 # Android cache and build directories
 .build/
 .externalNativeBuild/
 .gradle/
 local.properties
-captures/
 
-# Android Studio IDE files
+# Android Studio
 .idea/
 *.iml
 *.iws
-*.suo
-*.user
-*.userosscache
-*.sln
-
-# Android specific temp files
 *.log
+
+# Temporary files
 *.tmp
+*.temp
 *.swp
 
 # Environment variables
@@ -31,25 +26,7 @@ captures/
 .env.local
 *.env.*
 
-# Python related (if applicable)
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-
-# Dependencies
-node_modules/
-vendor/
-lib/
-
 # OS generated files
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 ```
