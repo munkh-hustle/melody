@@ -4,10 +4,10 @@ __pycache__/
 *.o
 *.obj
 *.class
+*.exe
 *.dll
 *.so
 *.a
-*.exe
 *.out
 
 # Dependencies
@@ -18,35 +18,22 @@ venv/
 .env.local
 .env.*
 
-# Logs and temp files
+# Build directories
+dist/
+build/
+target/
 *.log
 *.tmp
 *.swp
-*.swo
 
 # Editors
 .vscode/
 .idea/
 
-# Build directories
-dist/
-build/
-target/
-.gradle/
-
-# Python specific
-*.pyc
-__pycache__/
-*.pyo
-*.pyd
-.Python
-*.so
-
-# Dart/Flutter specific
-.dart_tool/
-.packages
-.pub/
-build/
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
 
 # Compressed files
 *.zip
@@ -72,15 +59,9 @@ build/
 *.tar.xz
 *.tar.zst
 
-# System files
-.DS_Store
-Thumbs.db
+# Gradle
+.gradle/
 
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
-
-# Cache directories
+# Python specific
 .mypy_cache/
 .pytest_cache/

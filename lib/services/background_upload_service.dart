@@ -23,7 +23,6 @@ Future<void> initializeBackgroundService() async {
       initialNotificationTitle: 'Disbox Upload',
       initialNotificationContent: 'Initializing...',
       foregroundServiceNotificationId: 888,
-      foregroundServiceTypes: [AndroidForegroundType.dataSync],
     ),
     iosConfiguration: IosConfiguration(),
   );
