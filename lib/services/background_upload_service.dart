@@ -106,8 +106,13 @@ void onStart(ServiceInstance service) async {
     } finally {
       // Stop the service after completion
       await Future.delayed(const Duration(seconds: 2)); // Delay to let user see notification
-      await service.stopSelf();
+      service.invoke('stopService');
     }
+  });
+  
+  // Listen for stopService event
+  service.on('stopService').listen((event) async {
+    await service.stopSelf();
   });
 }
 
