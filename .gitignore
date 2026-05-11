@@ -1,46 +1,55 @@
 ```
-# Build artifacts
-build/
+# Android build artifacts
 *.apk
-*.aab
+*.aar
+*.dex
+*.so
+
+# Android cache and build directories
+.build/
+.externalNativeBuild/
+.gradle/
+local.properties
+captures/
+
+# Android Studio IDE files
+.idea/
+*.iml
+*.iws
+*.suo
+*.user
+*.userosscache
+*.sln
+
+# Android specific temp files
+*.log
+*.tmp
+*.swp
+
+# Environment variables
+.env
+.env.local
+*.env.*
+
+# Python related (if applicable)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
 *.so
 
 # Dependencies
 node_modules/
 vendor/
-
-# Logs
-*.log
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
+lib/
 
 # OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-
-# Dart/Flutter specific
-.dart_tool/
-.flutter-plugins
-.flutter-plugin-dependencies
-.packages
-.pub-cache/
-*.g.dart
-*.freezed.dart
-
-# Coverage
-coverage/
-htmlcov/
-
-# Temporary files
-*.tmp
-*.temp
 ```
