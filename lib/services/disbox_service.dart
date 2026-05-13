@@ -1860,13 +1860,23 @@ class DisboxService extends ChangeNotifier {
     };
 
     // Add to parent's children using direct reference
-    var children = currentFolder!['children'] as Map<String, dynamic>?;
+    var children = currentFolder!['children'];
     if (children == null) {
       children = <String, dynamic>{};
       currentFolder['children'] = children;
+    } else if (children is! Map<String, dynamic>) {
+      // Convert Map<dynamic, dynamic> to Map<String, dynamic> if needed
+      final convertedChildren = <String, dynamic>{};
+      if (children is Map) {
+        children.forEach((key, value) {
+          convertedChildren[key.toString()] = value;
+        });
+      }
+      children = convertedChildren;
+      currentFolder['children'] = children;
     }
 
-    children[fileName] = fileNode;
+    (children as Map<String, dynamic>)[fileName] = fileNode;
     print('[DisboxService DEBUG] File node added. Children count: ${children.length}');
 
     // Save file tree to local storage
