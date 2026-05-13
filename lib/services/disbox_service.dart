@@ -825,7 +825,25 @@ class DisboxService extends ChangeNotifier {
     // Navigate to parent directory
     for (int i = 0; i < parts.length - 1; i++) {
       final part = parts[i];
-      final children = current['children'] as Map<String, dynamic>;
+      var childrenRaw = current['children'];
+      Map<String, dynamic> children;
+      
+      if (childrenRaw == null) {
+        children = <String, dynamic>{};
+        current['children'] = children;
+      } else if (childrenRaw is Map<String, dynamic>) {
+        children = childrenRaw;
+      } else {
+        // Convert Map<dynamic, dynamic> to Map<String, dynamic>
+        children = <String, dynamic>{};
+        if (childrenRaw is Map) {
+          childrenRaw.forEach((key, value) {
+            children[key.toString()] = value;
+          });
+        }
+        current['children'] = children;
+      }
+      
       print('[DisboxService DEBUG] Navigating to part: $part, children keys: ${children.keys.toList()}');
 
       if (!children.containsKey(part)) {
@@ -846,7 +864,25 @@ class DisboxService extends ChangeNotifier {
 
     // Add the file/folder to its parent
     final fileName = parts.last;
-    final children = current['children'] as Map<String, dynamic>;
+    var childrenRaw = current['children'];
+    Map<String, dynamic> children;
+    
+    if (childrenRaw == null) {
+      children = <String, dynamic>{};
+      current['children'] = children;
+    } else if (childrenRaw is Map<String, dynamic>) {
+      children = childrenRaw;
+    } else {
+      // Convert Map<dynamic, dynamic> to Map<String, dynamic>
+      children = <String, dynamic>{};
+      if (childrenRaw is Map) {
+        childrenRaw.forEach((key, value) {
+          children[key.toString()] = value;
+        });
+      }
+      current['children'] = children;
+    }
+    
     print('[DisboxService DEBUG] Adding file: $fileName to parent with ${children.length} existing children');
 
     children[fileName] = {
@@ -1351,7 +1387,23 @@ class DisboxService extends ChangeNotifier {
     print('[DisboxService DEBUG] Path parts: $parts');
 
     for (final part in parts) {
-      final children = currentNode?['children'] as Map<String, dynamic>?;
+      var childrenRaw = currentNode?['children'];
+      Map<String, dynamic>? children;
+      
+      if (childrenRaw != null) {
+        if (childrenRaw is Map<String, dynamic>) {
+          children = childrenRaw;
+        } else if (childrenRaw is Map) {
+          // Convert Map<dynamic, dynamic> to Map<String, dynamic>
+          children = <String, dynamic>{};
+          childrenRaw.forEach((key, value) {
+            children![key.toString()] = value;
+          });
+          // Update the node with converted map
+          currentNode!['children'] = children;
+        }
+      }
+      
       print('[DisboxService DEBUG] Looking for part: $part, children keys: ${children?.keys.toList()}');
 
       if (children == null || !children.containsKey(part)) {
@@ -1392,8 +1444,25 @@ class DisboxService extends ChangeNotifier {
       throw Exception('Parent folder not found: $parentPath');
     }
 
-    // Check if folder already exists using direct reference
-    final children = parentFolder['children'] as Map<String, dynamic>? ?? <String, dynamic>{};
+    // Check if folder already exists - handle both Map types safely
+    final childrenRaw = parentFolder['children'];
+    Map<String, dynamic> children;
+    
+    if (childrenRaw == null) {
+      children = <String, dynamic>{};
+      parentFolder['children'] = children;
+    } else if (childrenRaw is Map<String, dynamic>) {
+      children = childrenRaw;
+    } else {
+      // Convert Map<dynamic, dynamic> to Map<String, dynamic>
+      children = <String, dynamic>{};
+      if (childrenRaw is Map) {
+        childrenRaw.forEach((key, value) {
+          children[key.toString()] = value;
+        });
+      }
+      parentFolder['children'] = children;
+    }
 
     if (children.containsKey(name)) {
       throw Exception('Folder already exists: $name');
@@ -1831,7 +1900,21 @@ class DisboxService extends ChangeNotifier {
 
     for (int i = 0; i < parts.length - 1; i++) {
       final folderName = parts[i];
-      final children = currentFolder!['children'] as Map<String, dynamic>?;
+      var childrenRaw = currentFolder!['children'];
+      Map<String, dynamic>? children;
+      
+      if (childrenRaw != null) {
+        if (childrenRaw is Map<String, dynamic>) {
+          children = childrenRaw;
+        } else if (childrenRaw is Map) {
+          // Convert Map<dynamic, dynamic> to Map<String, dynamic>
+          children = <String, dynamic>{};
+          childrenRaw.forEach((key, value) {
+            children![key.toString()] = value;
+          });
+          currentFolder!['children'] = children;
+        }
+      }
 
       print('[DisboxService DEBUG] Looking for folder: $folderName, children keys: ${children?.keys.toList()}');
       
@@ -1861,23 +1944,26 @@ class DisboxService extends ChangeNotifier {
 
     // Add to parent's children using direct reference
     var children = currentFolder!['children'];
+    Map<String, dynamic> childrenMap;
+    
     if (children == null) {
-      children = <String, dynamic>{};
-      currentFolder['children'] = children;
-    } else if (children is! Map<String, dynamic>) {
+      childrenMap = <String, dynamic>{};
+      currentFolder['children'] = childrenMap;
+    } else if (children is Map<String, dynamic>) {
+      childrenMap = children;
+    } else {
       // Convert Map<dynamic, dynamic> to Map<String, dynamic> if needed
-      final convertedChildren = <String, dynamic>{};
+      childrenMap = <String, dynamic>{};
       if (children is Map) {
         children.forEach((key, value) {
-          convertedChildren[key.toString()] = value;
+          childrenMap[key.toString()] = value;
         });
       }
-      children = convertedChildren;
-      currentFolder['children'] = children;
+      currentFolder['children'] = childrenMap;
     }
 
-    (children as Map<String, dynamic>)[fileName] = fileNode;
-    print('[DisboxService DEBUG] File node added. Children count: ${children.length}');
+    childrenMap[fileName] = fileNode;
+    print('[DisboxService DEBUG] File node added. Children count: ${childrenMap.length}');
 
     // Save file tree to local storage
     await _saveFileTree();
@@ -1903,7 +1989,21 @@ class DisboxService extends ChangeNotifier {
     // Navigate to parent folder using direct references
     for (int i = 0; i < parts.length - 1; i++) {
       final folderName = parts[i];
-      final children = currentFolder!['children'] as Map<String, dynamic>?;
+      var childrenRaw = currentFolder!['children'];
+      Map<String, dynamic>? children;
+      
+      if (childrenRaw != null) {
+        if (childrenRaw is Map<String, dynamic>) {
+          children = childrenRaw;
+        } else if (childrenRaw is Map) {
+          // Convert Map<dynamic, dynamic> to Map<String, dynamic>
+          children = <String, dynamic>{};
+          childrenRaw.forEach((key, value) {
+            children![key.toString()] = value;
+          });
+          currentFolder!['children'] = children;
+        }
+      }
 
       if (children != null && children.containsKey(folderName)) {
         currentFolder = children[folderName] as Map<String, dynamic>?;
@@ -1915,7 +2015,21 @@ class DisboxService extends ChangeNotifier {
 
     // Remove from parent's children using direct reference
     final fileName = parts.last;
-    var children = currentFolder!['children'] as Map<String, dynamic>?;
+    var childrenRaw = currentFolder!['children'];
+    Map<String, dynamic>? children;
+    
+    if (childrenRaw != null) {
+      if (childrenRaw is Map<String, dynamic>) {
+        children = childrenRaw;
+      } else if (childrenRaw is Map) {
+        // Convert Map<dynamic, dynamic> to Map<String, dynamic>
+        children = <String, dynamic>{};
+        childrenRaw.forEach((key, value) {
+          children![key.toString()] = value;
+        });
+        currentFolder!['children'] = children;
+      }
+    }
 
     if (children != null && children.containsKey(fileName)) {
       children.remove(fileName);
