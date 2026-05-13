@@ -1009,6 +1009,9 @@ class DisboxService extends ChangeNotifier {
 
       _fileCache[disboxFile.id] = disboxFile;
 
+      // Notify listeners that the file tree has changed
+      notifyListeners();
+
       print('Upload complete: ${p.basename(file.path)} -> $filePath');
       return disboxFile;
     } catch (e, stackTrace) {
@@ -1851,7 +1854,10 @@ class DisboxService extends ChangeNotifier {
 
     // Get parent folder from path
     final parts = path.split('/').where((p) => p.isNotEmpty).toList();
+    print('[DisboxService DEBUG] _addFileToFileTree: path=$path, parts=$parts');
     Map<String, dynamic>? currentFolder = _fileTree;
+    
+    print('[DisboxService DEBUG] Starting with root folder, children keys: ${(_fileTree!['children'] as Map?)?.keys.toList()}');
 
     for (int i = 0; i < parts.length - 1; i++) {
       final folderName = parts[i];
@@ -1864,9 +1870,12 @@ class DisboxService extends ChangeNotifier {
         }
       }
 
+      print('[DisboxService DEBUG] Looking for folder: $folderName, children keys: ${children?.keys.toList()}');
+      
       if (children != null && children.containsKey(folderName)) {
         Map<String, dynamic>? nextFolder;
         final folderData = children[folderName];
+        print('[DisboxService DEBUG] Found folder data type: ${folderData.runtimeType}');
         if (folderData is Map) {
           nextFolder = <String, dynamic>{};
           for (final entry in folderData.entries) {
@@ -1874,21 +1883,24 @@ class DisboxService extends ChangeNotifier {
           }
         }
         currentFolder = nextFolder;
+        print('[DisboxService DEBUG] Navigated to folder: $folderName');
       } else {
-        print('Parent folder not found: $folderName');
+        print('[DisboxService ERROR] Parent folder not found: $folderName');
+        print('[DisboxService ERROR] Available folders: ${children?.keys.toList()}');
         return;
       }
     }
 
-    // Create file node
+    // Create file node - use same format as _addFileToTree for consistency
     final fileName = parts.last;
+    print('[DisboxService DEBUG] Adding file node: $fileName to parent');
     final fileNode = {
       'id': id,
       'name': fileName,
       'type': 'file',
       'size': size,
-      'mime_type': mimeType,
-      'content': jsonEncode(chunkMessageIds),
+      'message_id': id,
+      'chunk_message_ids': chunkMessageIds,
       'created_at': DateTime.now().toIso8601String(),
       'updated_at': DateTime.now().toIso8601String(),
     };
@@ -1907,6 +1919,7 @@ class DisboxService extends ChangeNotifier {
 
     children[fileName] = fileNode;
     currentFolder['children'] = children;
+    print('[DisboxService DEBUG] File node added. Children count: ${children.length}');
 
     // Save file tree to local storage
     await _saveFileTree();
