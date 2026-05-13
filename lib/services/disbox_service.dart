@@ -1351,16 +1351,7 @@ class DisboxService extends ChangeNotifier {
     print('[DisboxService DEBUG] Path parts: $parts');
 
     for (final part in parts) {
-      final childrenData = currentNode?['children'];
-      Map<String, dynamic>? children;
-      if (childrenData is Map) {
-        children = <String, dynamic>{};
-        for (final entry in childrenData.entries) {
-          children[entry.key.toString()] = entry.value;
-        }
-      } else if (childrenData != null) {
-        print('[DisboxService DEBUG] Unexpected children type: ${childrenData.runtimeType}');
-      }
+      final children = currentNode?['children'] as Map<String, dynamic>?;
       print('[DisboxService DEBUG] Looking for part: $part, children keys: ${children?.keys.toList()}');
 
       if (children == null || !children.containsKey(part)) {
@@ -1368,18 +1359,7 @@ class DisboxService extends ChangeNotifier {
         return null;
       }
 
-      Map<String, dynamic>? nextNode;
-      final nodeData = children[part];
-      if (nodeData is Map) {
-        nextNode = <String, dynamic>{};
-        for (final entry in nodeData.entries) {
-          nextNode[entry.key.toString()] = entry.value;
-        }
-      } else if (nodeData != null) {
-        print('[DisboxService DEBUG] Unexpected node data type: ${nodeData.runtimeType}');
-      }
-
-      currentNode = nextNode;
+      currentNode = children[part] as Map<String, dynamic>?;
 
       // Verify it's a directory
       if (currentNode?['type'] != 'directory') {
@@ -1412,17 +1392,10 @@ class DisboxService extends ChangeNotifier {
       throw Exception('Parent folder not found: $parentPath');
     }
 
-    // Check if folder already exists
-    final childrenData = parentFolder['children'];
-    Map<String, dynamic>? children;
-    if (childrenData is Map) {
-      children = <String, dynamic>{};
-      for (final entry in childrenData.entries) {
-        children[entry.key.toString()] = entry.value;
-      }
-    }
+    // Check if folder already exists using direct reference
+    final children = parentFolder['children'] as Map<String, dynamic>? ?? <String, dynamic>{};
 
-    if (children != null && children.containsKey(name)) {
+    if (children.containsKey(name)) {
       throw Exception('Folder already exists: $name');
     }
 
@@ -1439,13 +1412,9 @@ class DisboxService extends ChangeNotifier {
       'updated_at': DateTime.now().toIso8601String(),
     };
 
-    // Add to parent's children
-    if (children == null) {
-      parentFolder['children'] = {name: folderNode};
-    } else {
-      children[name] = folderNode;
-      parentFolder['children'] = children; // Reassign to ensure update
-    }
+    // Add to parent's children using direct reference
+    children[name] = folderNode;
+    parentFolder['children'] = children; // Reassign to ensure update
 
     // Create DisboxFile object for adding to tree
     final folder = DisboxFile(
@@ -1856,34 +1825,18 @@ class DisboxService extends ChangeNotifier {
     // Get parent folder from path
     final parts = path.split('/').where((p) => p.isNotEmpty).toList();
     print('[DisboxService DEBUG] _addFileToFileTree: path=$path, parts=$parts');
-    Map<String, dynamic>? currentFolder = _fileTree;
     
-    print('[DisboxService DEBUG] Starting with root folder, children keys: ${(_fileTree!['children'] as Map?)?.keys.toList()}');
+    // Use direct reference to navigate the tree
+    Map<String, dynamic>? currentFolder = _fileTree;
 
     for (int i = 0; i < parts.length - 1; i++) {
       final folderName = parts[i];
-      final childrenData = currentFolder!['children'];
-      Map<String, dynamic>? children;
-      if (childrenData is Map) {
-        children = <String, dynamic>{};
-        for (final entry in childrenData.entries) {
-          children[entry.key.toString()] = entry.value;
-        }
-      }
+      final children = currentFolder!['children'] as Map<String, dynamic>?;
 
       print('[DisboxService DEBUG] Looking for folder: $folderName, children keys: ${children?.keys.toList()}');
       
       if (children != null && children.containsKey(folderName)) {
-        Map<String, dynamic>? nextFolder;
-        final folderData = children[folderName];
-        print('[DisboxService DEBUG] Found folder data type: ${folderData.runtimeType}');
-        if (folderData is Map) {
-          nextFolder = <String, dynamic>{};
-          for (final entry in folderData.entries) {
-            nextFolder[entry.key.toString()] = entry.value;
-          }
-        }
-        currentFolder = nextFolder;
+        currentFolder = children[folderName] as Map<String, dynamic>?;
         print('[DisboxService DEBUG] Navigated to folder: $folderName');
       } else {
         print('[DisboxService ERROR] Parent folder not found: $folderName');
@@ -1906,20 +1859,14 @@ class DisboxService extends ChangeNotifier {
       'updated_at': DateTime.now().toIso8601String(),
     };
 
-    // Add to parent's children
-    final childrenData = currentFolder!['children'];
-    Map<String, dynamic> children;
-    if (childrenData is Map) {
+    // Add to parent's children using direct reference
+    var children = currentFolder!['children'] as Map<String, dynamic>?;
+    if (children == null) {
       children = <String, dynamic>{};
-      for (final entry in childrenData.entries) {
-        children[entry.key.toString()] = entry.value;
-      }
-    } else {
-      children = <String, dynamic>{};
+      currentFolder['children'] = children;
     }
 
     children[fileName] = fileNode;
-    currentFolder['children'] = children;
     print('[DisboxService DEBUG] File node added. Children count: ${children.length}');
 
     // Save file tree to local storage
@@ -1943,49 +1890,25 @@ class DisboxService extends ChangeNotifier {
 
     Map<String, dynamic>? currentFolder = _fileTree;
 
-    // Navigate to parent folder
+    // Navigate to parent folder using direct references
     for (int i = 0; i < parts.length - 1; i++) {
       final folderName = parts[i];
-      final childrenData = currentFolder!['children'];
-      Map<String, dynamic>? children;
-      if (childrenData is Map) {
-        children = <String, dynamic>{};
-        for (final entry in childrenData.entries) {
-          children[entry.key.toString()] = entry.value;
-        }
-      }
+      final children = currentFolder!['children'] as Map<String, dynamic>?;
 
       if (children != null && children.containsKey(folderName)) {
-        Map<String, dynamic>? nextFolder;
-        final folderData = children[folderName];
-        if (folderData is Map) {
-          nextFolder = <String, dynamic>{};
-          for (final entry in folderData.entries) {
-            nextFolder[entry.key.toString()] = entry.value;
-          }
-        }
-        currentFolder = nextFolder;
+        currentFolder = children[folderName] as Map<String, dynamic>?;
       } else {
         print('Parent folder not found: $folderName');
         return;
       }
     }
 
-    // Remove from parent's children
+    // Remove from parent's children using direct reference
     final fileName = parts.last;
-    final childrenData = currentFolder!['children'];
-    Map<String, dynamic>? children;
-    if (childrenData is Map) {
-      children = <String, dynamic>{};
-      for (final entry in childrenData.entries) {
-        children[entry.key.toString()] = entry.value;
-      }
-    }
+    var children = currentFolder!['children'] as Map<String, dynamic>?;
 
     if (children != null && children.containsKey(fileName)) {
       children.remove(fileName);
-      currentFolder['children'] = children;
-
       // Save file tree to local storage
       await _saveFileTree();
     }
