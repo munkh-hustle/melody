@@ -28,6 +28,9 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        
+        // Required for flutter_local_notifications
+        multiDexEnabled = true
     }
 
     buildTypes {
