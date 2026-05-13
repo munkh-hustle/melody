@@ -205,6 +205,14 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       // Create a controller for progress updates
       double currentProgress = 0.0;
       
+      // Show notification that upload is starting
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Uploading ${result.files.first.name}...'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      
       // Show progress dialog with stream
       final progressDialog = ProgressDialog(
         title: 'Uploading ${result.files.first.name}',
@@ -233,7 +241,10 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         if (mounted) Navigator.pop(context); // Close progress dialog
         
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('File uploaded successfully')),
+          const SnackBar(
+            content: Text('File uploaded successfully'),
+            backgroundColor: Colors.green,
+          ),
         );
         
         _loadFiles(); // Refresh file list
@@ -241,7 +252,10 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         if (mounted) Navigator.pop(context); // Close progress dialog
         
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e')),
+          SnackBar(
+            content: Text('Upload failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } catch (e) {
@@ -291,13 +305,19 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       );
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Folder created')),
+        const SnackBar(
+          content: Text('Folder created'),
+          backgroundColor: Colors.green,
+        ),
       );
       
       _loadFiles(); // Refresh file list
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to create folder: $e')),
+        SnackBar(
+          content: Text('Failed to create folder: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -306,6 +326,14 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
   Future<void> _downloadFile(DisboxFile file) async {
     print('[DEBUG] _downloadFile called for: ${file.name}, size=${file.size}');
     final stopwatch = Stopwatch()..start();
+    
+    // Show notification that download is starting
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Downloading ${file.name}...'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
     
     // Show progress dialog with stream
     final progressDialog = ProgressDialog(
@@ -478,6 +506,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('$savedFileName saved to Documents/Disbox'),
+            backgroundColor: Colors.green,
             action: SnackBarAction(
               label: 'OK',
               onPressed: () {},
@@ -502,7 +531,10 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       }
       
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Download failed: $e')),
+        SnackBar(
+          content: Text('Download failed: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }

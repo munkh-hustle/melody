@@ -1446,6 +1446,9 @@ class DisboxService extends ChangeNotifier {
     // Save file tree to local storage
     await _saveFileTree();
 
+    // Notify listeners that the file tree has changed
+    notifyListeners();
+
     final folder = DisboxFile(
       id: newId,
       name: name,
