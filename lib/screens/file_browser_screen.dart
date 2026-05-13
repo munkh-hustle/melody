@@ -7,6 +7,7 @@ import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -16,6 +17,7 @@ import '../services/disbox_service.dart';
 import '../models/disbox_file.dart';
 import '../widgets/file_list_tile.dart';
 import '../widgets/progress_dialog.dart';
+import '../services/notification_service.dart';
 
 /// Main file browser screen for Disbox.
 /// 
@@ -29,6 +31,7 @@ class FileBrowserScreen extends StatefulWidget {
 
 class _FileBrowserScreenState extends State<FileBrowserScreen> {
   late final DisboxService _disboxService;
+  NotificationService? _notificationService;
   
   List<DisboxFile> _files = [];
   String _currentPath = '/';
@@ -37,12 +40,23 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
   bool _isInitialized = false;
   bool _isPickingFile = false; // Prevent multiple file picker invocations
   int _buildCount = 0; // Track build count to detect infinite loops
+  
+  // Track notification IDs for upload/download
+  int? _uploadNotificationId;
+  int? _downloadNotificationId;
 
   @override
   void initState() {
     super.initState();
     _disboxService = DisboxService();
     _initializeService();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Get notification service from provider
+    _notificationService = context.read<NotificationService>();
   }
 
   /// Initialize the service with the saved webhook URL
@@ -204,11 +218,12 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       
       // Create a controller for progress updates
       double currentProgress = 0.0;
+      final fileName = result.files.first.name;
       
-      // Show notification that upload is starting
+      // Show initial notification that upload is starting
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Uploading ${result.files.first.name}...'),
+          content: Text('Uploading $fileName...'),
           duration: const Duration(seconds: 3),
           behavior: SnackBarBehavior.floating,
         ),
@@ -216,7 +231,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       
       // Show progress dialog with stream
       final progressDialog = ProgressDialog(
-        title: 'Uploading ${result.files.first.name}',
+        title: 'Uploading $fileName',
         message: '${fileSizeMB.toStringAsFixed(1)} MB - Please wait...',
         initialProgress: 0.0,
         progressStream: _disboxService.uploadProgress,
@@ -229,6 +244,25 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       );
 
       try {
+        // Listen to upload progress stream and update notifications
+        // Use a variable to track the last progress value to avoid duplicate notifications
+        double lastProgress = -1;
+        final uploadSubscription = _disboxService.uploadProgress.listen((progress) async {
+          // Only update notification if progress has changed significantly (at least 1%)
+          if ((progress - lastProgress).abs() < 0.01 && progress < 1.0) {
+            return;
+          }
+          lastProgress = progress;
+          
+          if (_notificationService != null && _notificationService!.isInitialized) {
+            _uploadNotificationId = await _notificationService!.showUploadProgress(
+              fileName: fileName,
+              progress: progress,
+              notificationId: _uploadNotificationId,
+            );
+          }
+        });
+        
         await _disboxService.uploadFile(
           file,
           folderPath: _currentPath,
@@ -239,7 +273,24 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
           },
         );
 
+        // Cancel the subscription after upload completes
+        await uploadSubscription.cancel();
+
         if (mounted) Navigator.pop(context); // Close progress dialog
+        
+        // Cancel upload progress notification
+        if (_uploadNotificationId != null && _notificationService != null) {
+          await _notificationService!.cancelNotification(_uploadNotificationId!);
+          _uploadNotificationId = null;
+        }
+        
+        // Show success notification
+        if (_notificationService != null && _notificationService!.isInitialized) {
+          await _notificationService!.showTransferComplete(
+            fileName: fileName,
+            isUpload: true,
+          );
+        }
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -253,6 +304,24 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         _loadFiles(); // Refresh file list
       } catch (e) {
         if (mounted) Navigator.pop(context); // Close progress dialog
+        
+        // Cancel the subscription on error
+        // Note: uploadSubscription is already cancelled above, but we ensure cleanup here too
+        
+        // Cancel upload progress notification
+        if (_uploadNotificationId != null && _notificationService != null) {
+          await _notificationService!.cancelNotification(_uploadNotificationId!);
+          _uploadNotificationId = null;
+        }
+        
+        // Show error notification
+        if (_notificationService != null && _notificationService!.isInitialized) {
+          await _notificationService!.showTransferError(
+            fileName: fileName,
+            error: e.toString(),
+            isUpload: true,
+          );
+        }
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -339,11 +408,12 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
   Future<void> _downloadFile(DisboxFile file) async {
     print('[DEBUG] _downloadFile called for: ${file.name}, size=${file.size}');
     final stopwatch = Stopwatch()..start();
+    final fileName = file.name;
     
     // Show notification that download is starting
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Downloading ${file.name}...'),
+        content: Text('Downloading $fileName...'),
         duration: const Duration(seconds: 3),
         behavior: SnackBarBehavior.floating,
       ),
@@ -351,7 +421,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
     
     // Show progress dialog with stream
     final progressDialog = ProgressDialog(
-      title: 'Downloading ${file.name}',
+      title: 'Downloading $fileName',
       message: 'Preparing download...',
       initialProgress: 0.0,
       progressStream: _disboxService.downloadProgress,
@@ -364,7 +434,27 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
     );
 
     String? tempPath;
+    StreamSubscription? downloadSubscription;
     try {
+      // Listen to download progress stream and update notifications
+      // Use a variable to track the last progress value to avoid duplicate notifications
+      double lastProgress = -1;
+      downloadSubscription = _disboxService.downloadProgress.listen((progress) async {
+        // Only update notification if progress has changed significantly (at least 1%)
+        if ((progress - lastProgress).abs() < 0.01 && progress < 1.0) {
+          return;
+        }
+        lastProgress = progress;
+        
+        if (_notificationService != null && _notificationService!.isInitialized) {
+          _downloadNotificationId = await _notificationService!.showDownloadProgress(
+            fileName: fileName,
+            progress: progress,
+            notificationId: _downloadNotificationId,
+          );
+        }
+      });
+      
       // Request storage permission for Android 12 and below
       if (Platform.isAndroid) {
         print('[DEBUG] Requesting storage permissions...');
@@ -413,7 +503,16 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       
       print('[DEBUG] downloadFile completed (${stopwatch.elapsedMilliseconds}ms)');
 
+      // Cancel the subscription after download completes
+      await downloadSubscription?.cancel();
+
       if (mounted) Navigator.pop(context); // Close progress dialog
+      
+      // Cancel download progress notification
+      if (_downloadNotificationId != null && _notificationService != null) {
+        await _notificationService!.cancelNotification(_downloadNotificationId!);
+        _downloadNotificationId = null;
+      }
       
       // Verify downloaded file has content
       final tempFile = File(tempPath);
@@ -430,11 +529,11 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       // Read the downloaded file
       final fileData = await tempFile.readAsBytes();
       
-      print('[FileCopy] Saving file: ${file.name} ($fileSize bytes)');
+      print('[FileCopy] Saving file: $fileName ($fileSize bytes)');
       
       // Save to public Documents folder
       String? savedPath;
-      String savedFileName = file.name; // Track the final saved filename
+      String savedFileName = fileName; // Track the final saved filename
       try {
         // Try to access the public Documents directory
         Directory? documentsDir;
@@ -515,6 +614,15 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         }
       }
       
+      // Show success notification
+      if (_notificationService != null && _notificationService!.isInitialized) {
+        await _notificationService!.showTransferComplete(
+          fileName: savedFileName,
+          isUpload: false,
+          destinationPath: 'Documents/Disbox/$savedFileName',
+        );
+      }
+      
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -532,6 +640,24 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       }
     } catch (e) {
       if (mounted) Navigator.pop(context); // Close progress dialog
+      
+      // Cancel the subscription on error
+      await downloadSubscription?.cancel();
+      
+      // Cancel download progress notification
+      if (_downloadNotificationId != null && _notificationService != null) {
+        await _notificationService!.cancelNotification(_downloadNotificationId!);
+        _downloadNotificationId = null;
+      }
+      
+      // Show error notification
+      if (_notificationService != null && _notificationService!.isInitialized) {
+        await _notificationService!.showTransferError(
+          fileName: fileName,
+          error: e.toString(),
+          isUpload: false,
+        );
+      }
       
       // Ensure temp file is cleaned up on error too
       if (tempPath != null) {

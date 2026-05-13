@@ -36,6 +36,9 @@ dependencies:
   rxdart: ^0.28.0
   open_file: ^3.3.2
   share_plus: ^10.1.2
+  
+  # Local notifications for upload/download progress
+  flutter_local_notifications: ^18.0.1
 
 dev_dependencies:
   flutter_test:

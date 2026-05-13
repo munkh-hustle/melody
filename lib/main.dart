@@ -1,11 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'screens/import_screen.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  runApp(const DisboxApp());
+  // Initialize notification service
+  final notificationService = NotificationService();
+  try {
+    await notificationService.initialize();
+    debugPrint('[Main] Notification service initialized');
+  } catch (e, stackTrace) {
+    debugPrint('[Main ERROR] Failed to initialize notification service: $e');
+    debugPrint('[Main ERROR] Stack trace: $stackTrace');
+  }
+  
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: notificationService),
+      ],
+      child: const DisboxApp(),
+    ),
+  );
 }
 
 /// Main Disbox application widget.
