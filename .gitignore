@@ -1,63 +1,24 @@
 ```
-# Build artifacts
-*.o
-*.obj
-*.a
-*.lib
-*.so
-*.dll
-*.dylib
-*.exe
-
-# Dart/Flutter specific
+# Dependencies
 .dart_tool/
 .packages
-.pub/
-build/
-*.g.dart
-*.freezed.dart
 
-# Dependencies
-vendor/
+# Build outputs
+build/
+
+# Environment
+.env
+.env.local
+*.env.*
 
 # Logs
 *.log
-
-# Environment variables
-.env
-.env.local
-*.env
 
 # OS generated files
 .DS_Store
 Thumbs.db
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+# Temporary files
 *.tmp
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Cache directories
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.mypy_cache/
-.pytest_cache/
-
-# Distribution / packaging
-dist/
-target/
-.gradle/
-node_modules/
-.npm/
-.yarn/
-.pnp.*
+*.temp
 ```
