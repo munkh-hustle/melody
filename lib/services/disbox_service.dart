@@ -1444,6 +1444,7 @@ class DisboxService extends ChangeNotifier {
       parentFolder['children'] = {name: folderNode};
     } else {
       children[name] = folderNode;
+      parentFolder['children'] = children; // Reassign to ensure update
     }
 
     // Create DisboxFile object for adding to tree
