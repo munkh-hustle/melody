@@ -244,7 +244,15 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
 
       try {
         // Listen to upload progress stream and update notifications
+        // Use a variable to track the last progress value to avoid duplicate notifications
+        double lastProgress = -1;
         _disboxService.uploadProgress.listen((progress) async {
+          // Only update notification if progress has changed significantly (at least 1%)
+          if ((progress - lastProgress).abs() < 0.01 && progress < 1.0) {
+            return;
+          }
+          lastProgress = progress;
+          
           if (_notificationService != null && _notificationService!.isInitialized) {
             _uploadNotificationId = await _notificationService!.showUploadProgress(
               fileName: fileName,
@@ -421,7 +429,15 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
     String? tempPath;
     try {
       // Listen to download progress stream and update notifications
+      // Use a variable to track the last progress value to avoid duplicate notifications
+      double lastProgress = -1;
       _disboxService.downloadProgress.listen((progress) async {
+        // Only update notification if progress has changed significantly (at least 1%)
+        if ((progress - lastProgress).abs() < 0.01 && progress < 1.0) {
+          return;
+        }
+        lastProgress = progress;
+        
         if (_notificationService != null && _notificationService!.isInitialized) {
           _downloadNotificationId = await _notificationService!.showDownloadProgress(
             fileName: fileName,
