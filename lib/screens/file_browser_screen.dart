@@ -7,6 +7,7 @@ import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -246,7 +247,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         // Listen to upload progress stream and update notifications
         // Use a variable to track the last progress value to avoid duplicate notifications
         double lastProgress = -1;
-        _disboxService.uploadProgress.listen((progress) async {
+        final uploadSubscription = _disboxService.uploadProgress.listen((progress) async {
           // Only update notification if progress has changed significantly (at least 1%)
           if ((progress - lastProgress).abs() < 0.01 && progress < 1.0) {
             return;
@@ -271,6 +272,9 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
             });
           },
         );
+
+        // Cancel the subscription after upload completes
+        await uploadSubscription.cancel();
 
         if (mounted) Navigator.pop(context); // Close progress dialog
         
@@ -300,6 +304,9 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         _loadFiles(); // Refresh file list
       } catch (e) {
         if (mounted) Navigator.pop(context); // Close progress dialog
+        
+        // Cancel the subscription on error
+        // Note: uploadSubscription is already cancelled above, but we ensure cleanup here too
         
         // Cancel upload progress notification
         if (_uploadNotificationId != null && _notificationService != null) {
@@ -427,11 +434,12 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
     );
 
     String? tempPath;
+    StreamSubscription? downloadSubscription;
     try {
       // Listen to download progress stream and update notifications
       // Use a variable to track the last progress value to avoid duplicate notifications
       double lastProgress = -1;
-      _disboxService.downloadProgress.listen((progress) async {
+      downloadSubscription = _disboxService.downloadProgress.listen((progress) async {
         // Only update notification if progress has changed significantly (at least 1%)
         if ((progress - lastProgress).abs() < 0.01 && progress < 1.0) {
           return;
@@ -494,6 +502,9 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       );
       
       print('[DEBUG] downloadFile completed (${stopwatch.elapsedMilliseconds}ms)');
+
+      // Cancel the subscription after download completes
+      await downloadSubscription?.cancel();
 
       if (mounted) Navigator.pop(context); // Close progress dialog
       
@@ -629,6 +640,9 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       }
     } catch (e) {
       if (mounted) Navigator.pop(context); // Close progress dialog
+      
+      // Cancel the subscription on error
+      await downloadSubscription?.cancel();
       
       // Cancel download progress notification
       if (_downloadNotificationId != null && _notificationService != null) {
