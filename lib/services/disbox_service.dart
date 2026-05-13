@@ -1443,12 +1443,7 @@ class DisboxService extends ChangeNotifier {
       children[name] = folderNode;
     }
 
-    // Save file tree to local storage
-    await _saveFileTree();
-
-    // Notify listeners that the file tree has changed
-    notifyListeners();
-
+    // Create DisboxFile object for adding to tree
     final folder = DisboxFile(
       id: newId,
       name: name,
@@ -1458,6 +1453,15 @@ class DisboxService extends ChangeNotifier {
       createdAt: DateTime.now(),
       modifiedAt: DateTime.now(),
     );
+
+    // Add folder to file tree structure
+    _addFileToTree(_fileTree!, folder);
+
+    // Save file tree to local storage
+    await _saveFileTree();
+
+    // Notify listeners that the file tree has changed
+    notifyListeners();
 
     return folder;
   }
