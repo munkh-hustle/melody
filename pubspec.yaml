@@ -22,7 +22,7 @@ dependencies:
   path_provider: ^2.1.1
   file_picker: ^11.0.2
   permission_handler: ^12.0.1
-  device_info_plus: ^11.1.0
+  device_info_plus: ^12.4.0
   
   # UI components
   cupertino_icons: ^1.0.6
@@ -35,7 +35,7 @@ dependencies:
   mime: ^2.0.0
   rxdart: ^0.28.0
   open_file: ^3.3.2
-  share_plus: ^10.1.2
+  share_plus: ^12.0.2
 
 dev_dependencies:
   flutter_test:
