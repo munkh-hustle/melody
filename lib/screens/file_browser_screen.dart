@@ -924,10 +924,10 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         'file_tree': fileListJson,
       });
       
-      // Share the JSON data
+      // Share the JSON data with proper UTF-8 encoding for international characters
       final result = await Share.shareXFiles(
         [XFile.fromData(
-          Uint8List.fromList(jsonData.codeUnits),
+          Uint8List.fromList(utf8.encode(jsonData)),
           name: 'disbox_config.json',
           mimeType: 'application/json',
         )],
@@ -1005,8 +1005,8 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         return;
       }
       
-      // Read and parse the file
-      final fileContent = await File(filePath).readAsString();
+      // Read and parse the file with explicit UTF-8 encoding to support international characters
+      final fileContent = await File(filePath).readAsString(encoding: utf8);
       final data = jsonDecode(fileContent) as Map<String, dynamic>;
       
       // Validate the data
