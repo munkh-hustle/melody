@@ -194,7 +194,8 @@ class DisboxService extends ChangeNotifier {
     try {
       print('[DisboxService] Importing config from: ${jsonFile.path}');
 
-      final content = await jsonFile.readAsString();
+      // Read file with explicit UTF-8 encoding to support international characters
+      final content = await jsonFile.readAsString(encoding: utf8);
       final data = jsonDecode(content);
 
       if (data is! Map) {

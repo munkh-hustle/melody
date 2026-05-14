@@ -1005,8 +1005,8 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         return;
       }
       
-      // Read and parse the file
-      final fileContent = await File(filePath).readAsString();
+      // Read and parse the file with explicit UTF-8 encoding to support international characters
+      final fileContent = await File(filePath).readAsString(encoding: utf8);
       final data = jsonDecode(fileContent) as Map<String, dynamic>;
       
       // Validate the data
