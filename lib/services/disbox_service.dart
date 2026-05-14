@@ -15,6 +15,17 @@ import 'package:flutter/foundation.dart';
 import '../models/disbox_file.dart';
 import '../utils/chunk_utils.dart';
 
+/// Sanitize a filename by removing control characters that are invalid in JSON.
+/// 
+/// Control characters (U+0000 to U+001F) must be escaped in JSON strings, but some
+/// sources may include them literally. This function removes them to ensure valid JSON.
+String sanitizeFilename(String filename) {
+  // Remove control characters (U+0000 to U+001F) except for common safe ones
+  // We keep tab (U+0009), newline (U+000A), and carriage return (U+000D) if needed
+  // But for filenames, it's safest to remove all control characters
+  return filename.replaceAll(RegExp(r'[\x00-\x1f]'), '');
+}
+
 /// Callback for upload/download progress updates
 typedef ProgressCallback = void Function(int current, int total);
 
@@ -931,7 +942,7 @@ class DisboxService extends ChangeNotifier {
     // Reset upload progress stream
     _uploadProgressController.add(0.0);
 
-    final filename = path.basename(file.path);
+    final filename = sanitizeFilename(path.basename(file.path));
     final filePath = _normalizePath('$folderPath/$filename');
     final fileSize = file.lengthSync();
     final mimeType = _detectMimeType(filename);
