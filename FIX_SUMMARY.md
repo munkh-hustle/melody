@@ -1,128 +1,157 @@
-# Fix for "Webhook URL not configured" Error
+# Fix for "Missing type parameter" Error When Uploading Large Files
 
 ## Problem
-The app was showing error "Error: Bad state: Webhook URL not configured" because the `FileBrowserScreen` was creating a new `DisboxService` instance and immediately calling `listFiles()` without first setting the webhook URL.
+When uploading large zip files, the app crashes with:
+```
+Error picking file: PlatformException(error, Missing type parameter., null, java.lang.RuntimeException: Missing type parameter.
+at v0.a.<init>(SourceFile:10)
+at com.dexterous.flutterlocalnotifications.FlutterLocalNotificationsPlugin...
+```
+
+This error originates from the `flutter_local_notifications` plugin when trying to cancel notifications during file upload/download operations.
 
 ## Root Cause
-1. `FileBrowserScreen` created `DisboxService` as a final field initialized at declaration
-2. Called `_loadFiles()` in `initState()` which called `listFiles()` 
-3. But `setWebhookUrl()` was never called on that service instance
-4. The webhook URL was only saved in SharedPreferences by `SetupScreen`, but not loaded into the service
+The `flutter_local_notifications` plugin has a known issue on some Android devices where calling `cancel()` or `cancelAll()` methods can throw a "Missing type parameter" RuntimeException. This happens particularly when:
+1. The notification cache contains corrupted data
+2. There's a type serialization issue in the plugin's internal storage
+3. The plugin tries to deserialize scheduled notifications with missing type information
 
-## Solution
+## Solution Applied
 
-### 1. Updated `file_browser_screen.dart`
+### 1. Added Try-Catch Wrappers in Notification Service
+**File:** `lib/services/notification_service.dart`
 
-**Key Changes:**
-- Changed `_disboxService` from `final` to `late final` so it can be initialized in `initState()`
-- Added `_isInitialized` flag to track service initialization state
-- Created `_initializeService()` method that:
-  - Loads webhook URL from SharedPreferences
-  - Validates it exists
-  - Calls `setWebhookUrl()` on the service (which also loads file tree from Hive)
-  - Only then calls `_loadFiles()`
-- Added extensive debug logging with `[DEBUG]` prefix
+Wrapped `cancel()` and `cancelAll()` calls with try-catch blocks to prevent crashes:
 
-**Flow:**
-```
-initState()
-  → _initializeService()
-    → Load webhook_url from SharedPreferences
-    → Validate webhook exists
-    → Call _disboxService.setWebhookUrl(webhookUrl)
-      → This initializes Hive
-      → This loads file tree from local storage
-    → Set _isInitialized = true
-    → Call _loadFiles()
-      → Now service is configured, listFiles() works
-```
+```dart
+Future<void> cancelNotification(int id) async {
+  if (!_isInitialized) return;
+  try {
+    await _flutterLocalNotificationsPlugin.cancel(id);
+  } catch (e, stackTrace) {
+    // Silently ignore cancellation errors to prevent crashes
+    debugPrint('[NotificationService] Failed to cancel notification $id: $e');
+    debugPrint('[NotificationService] Stack trace: $stackTrace');
+  }
+}
 
-### 2. Updated `disbox_service.dart`
-
-**Added Debug Logging:**
-- All methods now log when they're called
-- All errors print detailed context before throwing
-- `_loadFileTree()` logs account ID and number of items loaded
-- `_saveFileTree()` logs success/failure
-- `setWebhookUrl()` logs the accountId generation
-- All file operations (`uploadFile`, `downloadFile`, `deleteFile`, `listFiles`, `createFolder`, `renameFile`) check configuration and log errors
-
-**Improved Error Messages:**
-- Changed from generic "Webhook URL not configured" to "Webhook URL not configured. Please call setWebhookUrl() first."
-- Added context logging showing current state (_webhookUrl, _accountId, isConfigured)
-
-### 3. Updated `main.dart`
-
-**Added Debug Logging:**
-- Logs when checking setup
-- Shows if webhook_url exists and its length
-- Shows account_id value
-- Logs navigation decision
-
-## How It Works Now
-
-### First Launch (No Webhook Configured)
-1. `AppStartup._checkSetup()` finds no webhook_url in SharedPreferences
-2. Navigates to `SetupScreen`
-3. User enters webhook URL
-4. `SetupScreen._saveWebhookUrl()` saves to SharedPreferences
-5. Navigates to `FileBrowserScreen`
-
-### Subsequent Launchs (Webhook Already Configured)
-1. `AppStartup._checkSetup()` finds webhook_url in SharedPreferences
-2. Navigates directly to `FileBrowserScreen`
-3. `FileBrowserScreen._initializeService()`:
-   - Loads webhook_url from SharedPreferences
-   - Calls `setWebhookUrl()` which:
-     - Initializes Hive
-     - Generates accountId (SHA256 hash of webhook URL)
-     - Loads file tree from Hive using accountId as key
-   - Sets `_isInitialized = true`
-4. Calls `_loadFiles()` which successfully lists files from the loaded file tree
-
-### File Operations
-All file operations now work with local Hive storage:
-- **Create folder**: Adds to file tree, saves to Hive
-- **Upload file**: Uploads to Discord, adds metadata to file tree, saves to Hive
-- **Delete file**: Deletes from Discord, removes from file tree, saves to Hive
-- **List files**: Reads from loaded file tree (no network needed for metadata)
-
-## Debug Output Example
-
-When app starts successfully:
-```
-[AppStartup] Checking setup...
-[AppStartup] Loaded webhook_url: exists (78 chars)
-[AppStartup] Loaded account_id: null
-[AppStartup] Navigation decision: hasWebhook=true
-[DEBUG] Initializing DisboxService...
-[DEBUG] Loaded webhook_url: exists
-[DEBUG] Loaded account_id: null
-[DisboxService] Setting webhook URL...
-[DisboxService] Webhook URL set, accountId: a1b2c3d4e5f6g7h8
-[DisboxService] Loading file tree from local storage...
-[DisboxService] Account ID: a1b2c3d4e5f6g7h8
-[DisboxService] Loaded file tree with 5 items
-[DEBUG] Service initialized successfully
-[DEBUG] Service isConfigured: true
-[DEBUG] Service accountId: a1b2c3d4e5f6g7h8
-[DEBUG] Loading files from path: /
-[DisboxService] Listing files in: /
-[DEBUG] Loaded 5 files
+Future<void> cancelAllNotifications() async {
+  if (!_isInitialized) return;
+  try {
+    await _flutterLocalNotificationsPlugin.cancelAll();
+  } catch (e, stackTrace) {
+    // Silently ignore cancellation errors to prevent crashes
+    debugPrint('[NotificationService] Failed to cancel all notifications: $e');
+    debugPrint('[NotificationService] Stack trace: $stackTrace');
+  }
+}
 ```
 
-When there's an error:
-```
-[DisboxService ERROR] listFiles called but webhook not configured
-[DisboxService ERROR] isConfigured: false, _webhookUrl: null, _accountId: null
+### 2. Added Try-Catch in File Browser Screen
+**File:** `lib/screens/file_browser_screen.dart`
+
+Added additional error handling around all `cancelNotification` calls in both upload and download flows:
+
+```dart
+// Cancel upload progress notification
+if (_uploadNotificationId != null && _notificationService != null) {
+  try {
+    await _notificationService!.cancelNotification(_uploadNotificationId!);
+  } catch (e) {
+    // Ignore cancellation errors
+    debugPrint('Failed to cancel upload notification: $e');
+  }
+  _uploadNotificationId = null;
+}
 ```
 
-## Testing Checklist
+### 3. Improved File Picker Error Handling
+**File:** `lib/screens/file_browser_screen.dart`
 
-- [ ] First launch shows SetupScreen
-- [ ] Entering valid webhook URL navigates to FileBrowserScreen
-- [ ] Creating folders persists across app restarts
-- [ ] Uploading files works and shows in file list
-- [ ] App restart shows files from previous session
-- [ ] Delete operations work correctly
-- [ ] Check debug logs in console for any errors
+Added dedicated try-catch block around FilePicker operations to provide better error messages:
+
+```dart
+FilePickerResult? result;
+try {
+  result = await FilePicker.pickFiles(
+    type: FileType.any,
+    allowMultiple: false,
+  );
+} catch (e) {
+  // Handle file picker errors gracefully
+  debugPrint('[FilePicker Error] Failed to pick file: $e');
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text('Error picking file: ${e.toString()}'),
+      backgroundColor: Colors.red,
+      duration: const Duration(seconds: 3),
+      behavior: SnackBarBehavior.floating,
+    ),
+  );
+  setState(() => _isPickingFile = false);
+  return;
+}
+```
+
+### 4. Enhanced MainActivity.kt
+**File:** `android/app/src/main/kotlin/com/example/flutter_disbox/MainActivity.kt`
+
+Added intent extras cleanup to prevent potential type parameter issues:
+
+```kotlin
+override fun onCreate(savedInstanceState: Bundle?) {
+  // Clean up any problematic extras that might cause type parameter issues
+  try {
+    intent?.extras?.let { bundle ->
+      bundle.keySet().forEach { key ->
+        if (bundle.get(key) == null) {
+          bundle.remove(key)
+        }
+      }
+    }
+  } catch (e: Exception) {
+    android.util.Log.w("MainActivity", "Error cleaning intent extras: ${e.message}")
+  }
+  
+  super.onCreate(savedInstanceState)
+}
+```
+
+### 5. Made Notification Initialization Non-Fatal
+**File:** `lib/main.dart`
+
+Changed notification service initialization to not crash the app if it fails:
+
+```dart
+try {
+  await notificationService.initialize();
+  debugPrint('[Main] Notification service initialized');
+} catch (e, stackTrace) {
+  debugPrint('[Main ERROR] Failed to initialize notification service: $e');
+  debugPrint('[Main ERROR] Stack trace: $stackTrace');
+  // Continue without notifications - they're optional for core functionality
+}
+```
+
+## Testing Recommendations
+
+1. **Test with large files (>500MB)**: Verify that uploads complete without crashing
+2. **Test notification cancellation**: Upload/download files and verify progress notifications work
+3. **Test error scenarios**: Try uploading while notifications are disabled
+4. **Test on different Android versions**: Especially Android 11+ where this issue is more common
+
+## Alternative Solutions (If Issues Persist)
+
+If problems continue, consider:
+
+1. **Disable notifications temporarily**: Comment out notification code in `file_browser_screen.dart`
+2. **Use a different notification approach**: Switch to simple SnackBar messages only
+3. **Update flutter_local_notifications**: Check for newer versions that may have fixed this bug
+4. **Clear app data**: Have users clear app data/cache to reset notification cache
+
+## Files Modified
+
+1. `lib/services/notification_service.dart` - Added try-catch to cancel methods
+2. `lib/screens/file_browser_screen.dart` - Added error handling for notifications and file picker
+3. `lib/main.dart` - Made notification init non-fatal
+4. `android/app/src/main/kotlin/com/example/flutter_disbox/MainActivity.kt` - Added intent cleanup

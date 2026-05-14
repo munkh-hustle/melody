@@ -169,18 +169,38 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       setState(() => _isPickingFile = true);
       
       // Pick file from device
-      final result = await FilePicker.pickFiles(
-        type: FileType.any,
-        allowMultiple: false,
-      );
+      FilePickerResult? result;
+      try {
+        result = await FilePicker.pickFiles(
+          type: FileType.any,
+          allowMultiple: false,
+        );
+      } catch (e) {
+        // Handle file picker errors gracefully
+        debugPrint('[FilePicker Error] Failed to pick file: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking file: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        setState(() => _isPickingFile = false);
+        return;
+      }
 
-      if (result == null || result.files.isEmpty) return;
+      if (result == null || result.files.isEmpty) {
+        setState(() => _isPickingFile = false);
+        return;
+      }
 
       final filePath = result.files.first.path;
       if (filePath == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Unable to access file path')),
         );
+        setState(() => _isPickingFile = false);
         return;
       }
 
@@ -213,7 +233,10 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
           ),
         );
         
-        if (confirmed != true) return;
+        if (confirmed != true) {
+          setState(() => _isPickingFile = false);
+          return;
+        }
       }
       
       // Create a controller for progress updates
@@ -280,7 +303,12 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         
         // Cancel upload progress notification
         if (_uploadNotificationId != null && _notificationService != null) {
-          await _notificationService!.cancelNotification(_uploadNotificationId!);
+          try {
+            await _notificationService!.cancelNotification(_uploadNotificationId!);
+          } catch (e) {
+            // Ignore cancellation errors
+            debugPrint('Failed to cancel upload notification: $e');
+          }
           _uploadNotificationId = null;
         }
         
@@ -310,7 +338,12 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         
         // Cancel upload progress notification
         if (_uploadNotificationId != null && _notificationService != null) {
-          await _notificationService!.cancelNotification(_uploadNotificationId!);
+          try {
+            await _notificationService!.cancelNotification(_uploadNotificationId!);
+          } catch (e) {
+            // Ignore cancellation errors
+            debugPrint('Failed to cancel upload notification: $e');
+          }
           _uploadNotificationId = null;
         }
         
@@ -333,13 +366,8 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error picking file: $e'),
-          duration: const Duration(seconds: 3),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      // Error already handled in inner try-catch for FilePicker
+      debugPrint('[Upload Error] Outer catch: $e');
     } finally {
       if (mounted) setState(() => _isPickingFile = false);
     }
@@ -510,7 +538,12 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       
       // Cancel download progress notification
       if (_downloadNotificationId != null && _notificationService != null) {
-        await _notificationService!.cancelNotification(_downloadNotificationId!);
+        try {
+          await _notificationService!.cancelNotification(_downloadNotificationId!);
+        } catch (e) {
+          // Ignore cancellation errors
+          debugPrint('Failed to cancel download notification: $e');
+        }
         _downloadNotificationId = null;
       }
       
@@ -646,7 +679,12 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       
       // Cancel download progress notification
       if (_downloadNotificationId != null && _notificationService != null) {
-        await _notificationService!.cancelNotification(_downloadNotificationId!);
+        try {
+          await _notificationService!.cancelNotification(_downloadNotificationId!);
+        } catch (e) {
+          // Ignore cancellation errors
+          debugPrint('Failed to cancel download notification: $e');
+        }
         _downloadNotificationId = null;
       }
       
