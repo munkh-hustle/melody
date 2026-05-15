@@ -317,20 +317,43 @@ class DisboxService extends ChangeNotifier {
 
       print('[DisboxService] Creating DisboxFile... (${stopwatch.elapsedMilliseconds}ms)');
 
+      // Check if this is batched metadata (split across multiple messages)
+      final totalBatches = metadata['totalBatches'] as int? ?? 1;
+      List<String> allChunkIds = [];
+      
+      if (totalBatches > 1) {
+        print('[DisboxService] Found batched metadata with $totalBatches batches');
+        
+        // For import, we expect the user to paste all batch messages
+        // The chunkIds in this message are just for this batch
+        final batchChunkIds = (metadata['chunkIds'] as List?)?.cast<String>() ?? [];
+        allChunkIds.addAll(batchChunkIds);
+        
+        // If allMetadataIds is available, we have references to all batches
+        final allMetadataIds = metadata['allMetadataIds'] as List?;
+        if (allMetadataIds != null && allMetadataIds.isNotEmpty) {
+          print('[DisboxService] Note: This metadata references ${allMetadataIds.length} batch messages.');
+          print('[DisboxService] For complete import, please paste ALL batch messages separated by newlines.');
+          // In the import screen, users can paste multiple lines, which will be handled by importMultipleMetadataFromText
+        }
+      } else {
+        // Single message metadata
+        allChunkIds = (metadata['chunkIds'] as List?)?.cast<String>() ?? [];
+      }
+
       // Create DisboxFile from the metadata
       // Note: Discord message metadata doesn't have a unique file ID in the same way,
       // so we use the first chunk ID or generate one from the path
-      final chunkIds = (metadata['chunkIds'] as List?)?.cast<String>() ?? [];
-      final fileId = chunkIds.isNotEmpty ? chunkIds.first : _hashWebhookUrl(metadata['path'] as String);
+      final fileId = allChunkIds.isNotEmpty ? allChunkIds.first : _hashWebhookUrl(metadata['path'] as String);
 
       final disboxFile = DisboxFile(
         id: fileId,
-        name: metadata['name'] as String,
-        path: metadata['path'] as String,
+        name: metadata['name'] as String? ?? '',
+        path: metadata['path'] as String? ?? '',
         isFolder: metadata['isFolder'] as bool? ?? false,
         size: metadata['size'] as int?,
         mimeType: metadata['mimeType'] as String?,
-        chunkMessageIds: chunkIds,
+        chunkMessageIds: allChunkIds,
         createdAt: DateTime.parse(metadata['createdAt'] as String),
         modifiedAt: metadata['modifiedAt'] != null
             ? DateTime.parse(metadata['modifiedAt'] as String)
@@ -399,15 +422,111 @@ class DisboxService extends ChangeNotifier {
 
   /// Import multiple file metadata entries from a list of Discord message texts.
   ///
+  /// This method handles batched metadata where chunk IDs are split across
+  /// multiple messages due to Discord's 2000 character limit. It will:
+  /// 1. Group messages by their allMetadataIds reference (if available)
+  /// 2. Merge chunk IDs from all batches belonging to the same file
+  /// 3. Import each complete file's metadata
+  ///
   /// Returns the number of successfully imported files.
   Future<int> importMultipleMetadataFromText(List<String> metadataTexts) async {
-    int successCount = 0;
+    print('[IMPORT] Importing ${metadataTexts.length} metadata entries...');
+    
+    // First pass: parse all metadata and group by file
+    final Map<String, List<Map<String, dynamic>>> groupedMetadata = {};
+    final Map<String, Map<String, dynamic>> fileBaseMetadata = {};
+    
     for (final text in metadataTexts) {
-      final result = await importMetadataFromText(text);
-      if (result != null) {
-        successCount++;
+      try {
+        String jsonStr = text.trim();
+        const prefix = '[DISBOX]';
+        if (jsonStr.startsWith(prefix)) {
+          jsonStr = jsonStr.substring(prefix.length).trim();
+        }
+        
+        final metadata = jsonDecode(jsonStr) as Map<String, dynamic>;
+        
+        // Validate it's a disbox_metadata type
+        if (metadata['type'] != 'disbox_metadata') {
+          continue;
+        }
+        
+        // Get unique identifier for this file (use path or allMetadataIds)
+        final allMetadataIds = metadata['allMetadataIds'] as List?;
+        String fileId;
+        
+        if (allMetadataIds != null && allMetadataIds.isNotEmpty) {
+          // Use sorted allMetadataIds as key to group batches
+          final sortedIds = List<String>.from(allMetadataIds.cast<String>())..sort();
+          fileId = sortedIds.join('|');
+        } else {
+          // Use path as fallback identifier
+          fileId = metadata['path'] as String? ?? metadata['name'] as String? ?? '';
+        }
+        
+        if (!groupedMetadata.containsKey(fileId)) {
+          groupedMetadata[fileId] = [];
+        }
+        groupedMetadata[fileId]!.add(metadata);
+        
+        // Store base metadata from the last batch (which has name/path/mimeType)
+        fileBaseMetadata[fileId] = metadata;
+        
+      } catch (e) {
+        print('[IMPORT ERROR] Failed to parse metadata: $e');
       }
     }
+    
+    print('[IMPORT] Found ${groupedMetadata.length} unique files');
+    
+    // Second pass: merge and import each file
+    int successCount = 0;
+    for (final entry in groupedMetadata.entries) {
+      final fileId = entry.key;
+      final batches = entry.value;
+      
+      try {
+        // Merge all chunk IDs from all batches
+        final allChunkIds = <String>[];
+        for (final batch in batches) {
+          final batchChunkIds = (batch['chunkIds'] as List?)?.cast<String>() ?? [];
+          allChunkIds.addAll(batchChunkIds);
+        }
+        
+        // Sort chunk IDs to maintain original order
+        allChunkIds.sort((a, b) => a.compareTo(b));
+        
+        // Get base metadata from the last batch (contains name, path, etc.)
+        final baseMetadata = fileBaseMetadata[fileId]!;
+        
+        // Create merged metadata
+        final mergedMetadata = {
+          'type': 'disbox_metadata',
+          'version': '1.0',
+          'name': baseMetadata['name'],
+          'path': baseMetadata['path'],
+          'size': baseMetadata['size'],
+          'mimeType': baseMetadata['mimeType'],
+          'isFolder': baseMetadata['isFolder'],
+          'createdAt': baseMetadata['createdAt'],
+          'modifiedAt': baseMetadata['modifiedAt'],
+          'chunkIds': allChunkIds,
+        };
+        
+        print('[IMPORT] Importing: ${mergedMetadata['name']} with ${allChunkIds.length} chunks');
+        
+        // Convert back to text format and import
+        final mergedText = '[DISBOX] ${jsonEncode(mergedMetadata)}';
+        final result = await importMetadataFromText(mergedText);
+        
+        if (result != null) {
+          successCount++;
+        }
+      } catch (e) {
+        print('[IMPORT ERROR] Failed to import file $fileId: $e');
+      }
+    }
+    
     return successCount;
   }
 
@@ -1776,9 +1895,8 @@ class DisboxService extends ChangeNotifier {
   /// Create a metadata message to store file information.
   ///
   /// Encodes file metadata as JSON in the message content.
-  /// Create a metadata message to store file information.
-  ///
-  /// Encodes file metadata as JSON in the message content.
+  /// If the metadata is too large for a single Discord message (>2000 chars),
+  /// it splits the chunk IDs across multiple messages.
   Future<String> _createMetadataMessage({
     required String filename,
     required String path,
@@ -1789,48 +1907,142 @@ class DisboxService extends ChangeNotifier {
   }) async {
     final apiUrl = _getWebhookApiUrl();
 
-    final metadata = {
+    // Discord has a 2000 character limit for message content
+    // We need to split metadata if it exceeds this limit
+    const int maxContentLength = 2000;
+    const String prefix = '${DisboxConstants.boxPrefix} ';
+    
+    print('[METADATA] Creating metadata message for $filename');
+    print('[METADATA] Total chunks: ${chunkMessageIds.length}');
+
+    // Build base metadata without chunkIds first
+    final baseMetadata = {
       'type': 'disbox_metadata',
       'version': '1.0',
       'name': filename,
       'path': path,
       'size': size,
       'mimeType': mimeType,
-      'chunkIds': chunkMessageIds,
       'isFolder': isFolder,
       'createdAt': DateTime.now().toIso8601String(),
+      'totalChunks': chunkMessageIds.length,
     };
 
-    print('[METADATA] Creating metadata message for $filename');
-    print('[METADATA] Metadata: ${jsonEncode(metadata)}');
+    // Calculate how many chunk IDs fit in one message
+    final baseJson = jsonEncode(baseMetadata);
+    final baseWithEmptyChunks = jsonEncode({...baseMetadata, 'chunkIds': <String>[]});
+    final reservedSpace = prefix.length + baseWithEmptyChunks.length + 50; // 50 for array brackets and safety margin
+    final availableForChunkIds = maxContentLength - reservedSpace;
+    
+    // Estimate average chunk ID length (they're typically ~19 characters for Discord snowflakes)
+    final avgChunkIdLength = chunkMessageIds.isNotEmpty 
+        ? chunkMessageIds.map((id) => id.length).reduce((a, b) => a + b) ~/ chunkMessageIds.length 
+        : 19;
+    final chunkIdsPerMessage = (availableForChunkIds / (avgChunkIdLength + 3)).floor(); // +3 for quotes and comma
+    
+    print('[METADATA] Chunk IDs per message: $chunkIdsPerMessage');
 
     try {
-      final response = await _dio.post(
-        apiUrl,
-        data: {
-          'content': '${DisboxConstants.boxPrefix} ${jsonEncode(metadata)}',
-        },
-        queryParameters: {'wait': 'true'},
-      );
+      if (chunkIdsPerMessage <= 0 || chunkMessageIds.length <= chunkIdsPerMessage) {
+        // All chunk IDs fit in one message
+        final metadata = {...baseMetadata, 'chunkIds': chunkMessageIds};
+        print('[METADATA] Metadata: ${jsonEncode(metadata)}');
+        
+        final response = await _dio.post(
+          apiUrl,
+          data: {
+            'content': '$prefix${jsonEncode(metadata)}',
+          },
+          queryParameters: {'wait': 'true'},
+        );
 
-      print('[METADATA] Response status: ${response.statusCode}');
+        print('[METADATA] Response status: ${response.statusCode}');
 
-      if (response.statusCode != 200) {
-        print('[METADATA ERROR] Failed with status ${response.statusCode}');
-        print('[METADATA ERROR] Response: ${response.data}');
-        throw Exception(
-            'Failed to create metadata message: ${response.statusCode} - ${response.data}');
+        if (response.statusCode != 200) {
+          print('[METADATA ERROR] Failed with status ${response.statusCode}');
+          print('[METADATA ERROR] Response: ${response.data}');
+          throw Exception(
+              'Failed to create metadata message: ${response.statusCode} - ${response.data}');
+        }
+
+        final responseData = response.data as Map<String, dynamic>;
+        final messageId = responseData['id'] as String;
+        print('[METADATA] Success! Message ID: $messageId');
+        return messageId;
+      } else {
+        // Split chunk IDs across multiple messages
+        print('[METADATA] Splitting metadata across multiple messages...');
+        
+        final messageIds = <String>[];
+        final chunkBatches = _splitIntoBatches(chunkMessageIds, chunkIdsPerMessage);
+        
+        for (int i = 0; i < chunkBatches.length; i++) {
+          final batch = chunkBatches[i];
+          final isLastBatch = i == chunkBatches.length - 1;
+          
+          final batchMetadata = {
+            ...baseMetadata,
+            'chunkIds': batch,
+            'batchIndex': i,
+            'totalBatches': chunkBatches.length,
+            'isLastBatch': isLastBatch,
+          };
+          
+          if (!isLastBatch) {
+            // For non-last batches, don't include other fields to save space
+            batchMetadata.remove('name');
+            batchMetadata.remove('path');
+            batchMetadata.remove('mimeType');
+          }
+          
+          print('[METADATA] Sending batch $i/${chunkBatches.length} with ${batch.length} chunk IDs');
+          
+          final response = await _dio.post(
+            apiUrl,
+            data: {
+              'content': '$prefix${jsonEncode(batchMetadata)}',
+            },
+            queryParameters: {'wait': 'true'},
+          );
+          
+          if (response.statusCode != 200) {
+            print('[METADATA ERROR] Batch $i failed with status ${response.statusCode}');
+            throw Exception('Failed to create metadata batch: ${response.statusCode}');
+          }
+          
+          final responseData = response.data as Map<String, dynamic>;
+          final messageId = responseData['id'] as String;
+          messageIds.add(messageId);
+          
+          // Small delay to avoid rate limiting
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+        
+        // Return the first message ID as the primary identifier
+        final primaryMessageId = messageIds.first;
+        print('[METADATA] Success! Created ${messageIds.length} metadata messages. Primary ID: $primaryMessageId');
+        
+        // Store all message IDs in local cache for cleanup purposes
+        // The first message will contain a reference to all message IDs
+        await _updateMetadataMessage(primaryMessageId, {'allMetadataIds': messageIds});
+        
+        return primaryMessageId;
       }
-
-      final responseData = response.data as Map<String, dynamic>;
-      final messageId = responseData['id'] as String;
-      print('[METADATA] Success! Message ID: $messageId');
-      return messageId;
     } catch (e, stackTrace) {
       print('[METADATA ERROR] Failed to create metadata: $e');
       print('[METADATA ERROR] Stack Trace: $stackTrace');
       rethrow;
     }
+  }
+
+  /// Split a list into batches of specified size
+  List<List<T>> _splitIntoBatches<T>(List<T> list, int batchSize) {
+    final batches = <List<T>>[];
+    for (var i = 0; i < list.length; i += batchSize) {
+      final end = (i + batchSize < list.length) ? i + batchSize : list.length;
+      batches.add(list.sublist(i, end));
+    }
+    return batches;
   }
 
   /// Update a metadata message.
@@ -1868,20 +2080,97 @@ class DisboxService extends ChangeNotifier {
     return content?.startsWith(DisboxConstants.boxPrefix) ?? false;
   }
 
-  /// Parse metadata from a message.
-  DisboxFile _parseMetadataMessage(Map<String, dynamic> message) {
+  /// Parse metadata from a message (supports multi-batch metadata).
+  /// 
+  /// This method handles both single-message metadata and multi-batch metadata
+  /// where chunk IDs are split across multiple messages due to Discord's 2000
+  /// character limit.
+  Future<DisboxFile> _parseMetadataMessage(Map<String, dynamic> message) async {
     final content = message['content'] as String;
     final jsonStr = content.substring(DisboxConstants.boxPrefix.length).trim();
     final metadata = jsonDecode(jsonStr) as Map<String, dynamic>;
 
+    // Check if this is a batched metadata message
+    final totalBatches = metadata['totalBatches'] as int? ?? 1;
+    
+    List<String> allChunkIds = [];
+    
+    if (totalBatches > 1) {
+      // This is batched metadata - need to fetch all batches
+      print('[PARSE] Found batched metadata with $totalBatches batches');
+      
+      final batchIndex = metadata['batchIndex'] as int? ?? 0;
+      final isLastBatch = metadata['isLastBatch'] as bool? ?? false;
+      final allMetadataIds = metadata['allMetadataIds'] as List?;
+      
+      // Get chunk IDs from this batch
+      final batchChunkIds = (metadata['chunkIds'] as List?)?.cast<String>() ?? [];
+      
+      if (allMetadataIds != null && allMetadataIds.isNotEmpty) {
+        // We have all message IDs stored, fetch them all
+        final apiUrl = _getWebhookApiUrl();
+        
+        for (final msgId in allMetadataIds.cast<String>()) {
+          try {
+            final response = await _dio.get('$apiUrl/messages/$msgId');
+            final batchContent = response.data['content'] as String;
+            final batchJsonStr = batchContent.substring(DisboxConstants.boxPrefix.length).trim();
+            final batchMetadata = jsonDecode(batchJsonStr) as Map<String, dynamic>;
+            
+            final batchIds = (batchMetadata['chunkIds'] as List?)?.cast<String>() ?? [];
+            allChunkIds.addAll(batchIds);
+          } catch (e) {
+            print('[PARSE ERROR] Failed to fetch batch message $msgId: $e');
+          }
+        }
+        
+        // Sort chunk IDs by their numeric value to maintain original order
+        allChunkIds.sort((a, b) => a.compareTo(b));
+      } else {
+        // Fallback: just use the chunks from this batch
+        allChunkIds = batchChunkIds;
+        print('[PARSE WARNING] No allMetadataIds found, using partial chunk list');
+      }
+    } else {
+      // Single message metadata
+      allChunkIds = (metadata['chunkIds'] as List?)?.cast<String>() ?? [];
+    }
+
+    // For name/path/mimeType, check if they're in this message or need to be fetched from first batch
+    String name = metadata['name'] as String? ?? '';
+    String path = metadata['path'] as String? ?? '';
+    String? mimeType = metadata['mimeType'] as String?;
+    
+    // If name is missing, this might be a non-last batch - fetch from last batch
+    if (name.isEmpty && totalBatches > 1) {
+      final apiUrl = _getWebhookApiUrl();
+      final allMetadataIds = metadata['allMetadataIds'] as List?;
+      
+      if (allMetadataIds != null && allMetadataIds.isNotEmpty) {
+        final lastMsgId = allMetadataIds.last as String;
+        try {
+          final response = await _dio.get('$apiUrl/messages/$lastMsgId');
+          final lastContent = response.data['content'] as String;
+          final lastJsonStr = lastContent.substring(DisboxConstants.boxPrefix.length).trim();
+          final lastMetadata = jsonDecode(lastJsonStr) as Map<String, dynamic>;
+          
+          name = lastMetadata['name'] as String? ?? name;
+          path = lastMetadata['path'] as String? ?? path;
+          mimeType = lastMetadata['mimeType'] as String? ?? mimeType;
+        } catch (e) {
+          print('[PARSE ERROR] Failed to fetch last batch for metadata: $e');
+        }
+      }
+    }
+
     return DisboxFile(
       id: message['id'] as String,
-      name: metadata['name'] as String,
-      path: metadata['path'] as String,
-      isFolder: metadata['isFolder'] as bool,
+      name: name,
+      path: path,
+      isFolder: metadata['isFolder'] as bool? ?? false,
       size: metadata['size'] as int?,
-      mimeType: metadata['mimeType'] as String?,
-      chunkMessageIds: (metadata['chunkIds'] as List?)?.cast<String>() ?? [],
+      mimeType: mimeType,
+      chunkMessageIds: allChunkIds,
       createdAt: DateTime.parse(metadata['createdAt'] as String),
       modifiedAt: metadata['modifiedAt'] != null
           ? DateTime.parse(metadata['modifiedAt'] as String)
