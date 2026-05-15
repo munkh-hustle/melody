@@ -1931,7 +1931,10 @@ class DisboxService extends ChangeNotifier {
     // Calculate how many chunk IDs fit in one message
     final baseJson = jsonEncode(baseMetadata);
     final baseWithEmptyChunks = jsonEncode({...baseMetadata, 'chunkIds': <String>[]});
-    final reservedSpace = prefix.length + baseWithEmptyChunks.length + 50; // 50 for array brackets and safety margin
+    // Reserve space for: prefix, base JSON with empty chunks, allMetadataIds array (for last batch)
+    // allMetadataIds will contain ~10 message IDs of ~19 chars each = ~200 chars + brackets/commas
+    const int allMetadataIdsReserve = 250; 
+    final reservedSpace = prefix.length + baseWithEmptyChunks.length + allMetadataIdsReserve;
     final availableForChunkIds = maxContentLength - reservedSpace;
     
     // Estimate average chunk ID length (they're typically ~19 characters for Discord snowflakes)
@@ -1941,6 +1944,7 @@ class DisboxService extends ChangeNotifier {
     final chunkIdsPerMessage = (availableForChunkIds / (avgChunkIdLength + 3)).floor(); // +3 for quotes and comma
     
     print('[METADATA] Chunk IDs per message: $chunkIdsPerMessage');
+    print('[METADATA] Reserved space: $reservedSpace, Available for chunk IDs: $availableForChunkIds');
 
     try {
       if (chunkIdsPerMessage <= 0 || chunkMessageIds.length <= chunkIdsPerMessage) {
@@ -2022,9 +2026,33 @@ class DisboxService extends ChangeNotifier {
         final primaryMessageId = messageIds.first;
         print('[METADATA] Success! Created ${messageIds.length} metadata messages. Primary ID: $primaryMessageId');
         
-        // Store all message IDs in local cache for cleanup purposes
-        // The first message will contain a reference to all message IDs
-        await _updateMetadataMessage(primaryMessageId, {'allMetadataIds': messageIds});
+        // Store all message IDs in the last batch message (which has more space since it has fewer chunk IDs)
+        // The last batch is the best candidate because:
+        // 1. It has fewer chunk IDs (only the remainder)
+        // 2. It already contains name/path/mimeType fields
+        final lastMessageId = messageIds.last;
+        final lastBatchIndex = chunkBatches.length - 1;
+        
+        // Build the last batch metadata with allMetadataIds
+        final lastBatchMetadata = {
+          ...baseMetadata,
+          'chunkIds': chunkBatches.last,
+          'batchIndex': lastBatchIndex,
+          'totalBatches': chunkBatches.length,
+          'isLastBatch': true,
+          'allMetadataIds': messageIds,
+        };
+        
+        final lastMessageContent = '$prefix${jsonEncode(lastBatchMetadata)}';
+        
+        if (lastMessageContent.length <= maxContentLength) {
+          await _updateMetadataMessage(lastMessageId, {'allMetadataIds': messageIds});
+          print('[METADATA] Stored allMetadataIds in last message (ID: $lastMessageId)');
+        } else {
+          // Even the last message is too small, skip storing allMetadataIds on Discord
+          // The app will need to reconstruct the list from batchIndex/totalBatches by fetching channel messages
+          print('[METADATA WARNING] Cannot store allMetadataIds on Discord (content too large: ${lastMessageContent.length} chars). Will reconstruct from channel messages.');
+        }
         
         return primaryMessageId;
       }
@@ -2065,11 +2093,18 @@ class DisboxService extends ChangeNotifier {
     metadata.addAll(updates);
     metadata['modifiedAt'] = DateTime.now().toIso8601String();
 
+    // Check if the updated content would exceed Discord's limit
+    final updatedContent = '${DisboxConstants.boxPrefix} ${jsonEncode(metadata)}';
+    if (updatedContent.length > 2000) {
+      print('[METADATA UPDATE WARNING] Content too large (${updatedContent.length} chars), skipping update for message $messageId');
+      return; // Skip the update to avoid 400 error
+    }
+
     // Update message
     await _dio.patch(
       '$apiUrl/messages/$messageId',
       data: {
-        'content': '${DisboxConstants.boxPrefix} ${jsonEncode(metadata)}',
+        'content': updatedContent,
       },
     );
   }
@@ -2127,9 +2162,96 @@ class DisboxService extends ChangeNotifier {
         // Sort chunk IDs by their numeric value to maintain original order
         allChunkIds.sort((a, b) => a.compareTo(b));
       } else {
-        // Fallback: just use the chunks from this batch
-        allChunkIds = batchChunkIds;
-        print('[PARSE WARNING] No allMetadataIds found, using partial chunk list');
+        // Fallback: Try to find the last batch which should have allMetadataIds
+        // or reconstruct by iterating through all batch indices
+        print('[PARSE WARNING] No allMetadataIds found in current batch, attempting reconstruction...');
+        
+        final apiUrl = _getWebhookApiUrl();
+        final messageId = message['id'] as String;
+        final channelId = message['channel_id'] as String;
+        
+        // Strategy 1: If this is the last batch, it might have allMetadataIds stored there
+        // Try fetching the last batch message (which should have more space for allMetadataIds)
+        if (isLastBatch || batchIndex == totalBatches - 1) {
+          // This IS the last batch, so allMetadataIds should be here if it was stored
+          // But we already checked above and it wasn't found
+          // So we need to try a different approach
+        }
+        
+        // Strategy 2: Try to find any batch that has allMetadataIds by checking siblings
+        // We can try fetching messages with batch indices from 0 to totalBatches-1
+        // But we need at least one message ID to start...
+        
+        // Actually, we have the current message ID. Let's try to get channel info
+        // and fetch recent messages to find other batches
+        
+        // Try fetching channel messages to find other batches
+        // Note: This requires the webhook to have permissions to read messages
+        // which webhooks typically don't have. But let's try anyway.
+        try {
+          print('[PARSE] Attempting to fetch channel messages to find other batches...');
+          final messagesResponse = await _dio.get(
+            'https://discord.com/api/v10/channels/$channelId/messages',
+            queryParameters: {'limit': '50'},
+          );
+          
+          if (messagesResponse.statusCode == 200) {
+            final messages = messagesResponse.data as List;
+            
+            // Find all batch messages for this file by matching batchIndex and totalBatches
+            final batchMessages = <Map<String, dynamic>>[];
+            
+            for (final msg in messages) {
+              final msgData = msg as Map<String, dynamic>;
+              final content = msgData['content'] as String?;
+              
+              if (content != null && content.startsWith(DisboxConstants.boxPrefix)) {
+                try {
+                  final jsonStr = content.substring(DisboxConstants.boxPrefix.length).trim();
+                  final msgMetadata = jsonDecode(jsonStr) as Map<String, dynamic>;
+                  
+                  // Check if this message belongs to the same batched metadata
+                  final msgTotalBatches = msgMetadata['totalBatches'] as int?;
+                  final msgBatchIndex = msgMetadata['batchIndex'] as int?;
+                  final msgPath = msgMetadata['path'] as String?;
+                  final currentPath = metadata['path'] as String?;
+                  
+                  if (msgTotalBatches == totalBatches && 
+                      msgBatchIndex != null &&
+                      (msgPath == currentPath || msgPath == null || currentPath == null)) {
+                    batchMessages.add(msgMetadata);
+                  }
+                } catch (_) {
+                  // Skip invalid messages
+                }
+              }
+            }
+            
+            if (batchMessages.length == totalBatches) {
+              // Found all batches! Collect chunk IDs from all of them
+              print('[PARSE] Found all $totalBatches batches from channel messages');
+              allChunkIds.clear();
+              
+              for (final batchMsg in batchMessages) {
+                final batchIds = (batchMsg['chunkIds'] as List?)?.cast<String>() ?? [];
+                allChunkIds.addAll(batchIds);
+              }
+              
+              // Sort chunk IDs by their numeric value to maintain original order
+              allChunkIds.sort((a, b) => a.compareTo(b));
+            } else {
+              print('[PARSE WARNING] Only found ${batchMessages.length} of $totalBatches batches');
+              allChunkIds = batchChunkIds;
+            }
+          } else {
+            print('[PARSE WARNING] Cannot fetch channel messages (status: ${messagesResponse.statusCode})');
+            allChunkIds = batchChunkIds;
+          }
+        } catch (e) {
+          print('[PARSE WARNING] Failed to fetch channel messages: $e');
+          // Fallback: just use the chunks from this batch
+          allChunkIds = batchChunkIds;
+        }
       }
     } else {
       // Single message metadata
