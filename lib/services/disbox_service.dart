@@ -942,15 +942,24 @@ class DisboxService extends ChangeNotifier {
     print('[DisboxService DEBUG] _addFileToTree called for: ${file.path}');
     final path = file.path;
 
-    if (path == '/') {
-      // Root node
-      print('[DisboxService DEBUG] Adding root node');
-      root['name'] = file.name;
+    if (path == '/' || path == null || path.isEmpty) {
+      // Root node or invalid path
+      print('[DisboxService DEBUG] Adding root node or skipping invalid path');
+      if (path == '/') {
+        root['name'] = file.name;
+      }
       return;
     }
 
     final parts = path.split('/').where((p) => p.isNotEmpty).toList();
     print('[DisboxService DEBUG] Path parts: $parts');
+    
+    // Handle case where path has no valid parts (e.g., just "/" or empty string after filtering)
+    if (parts.isEmpty) {
+      print('[DisboxService DEBUG] No valid path parts, skipping file: ${file.name}');
+      return;
+    }
+    
     var current = root;
 
     // Navigate to parent directory
