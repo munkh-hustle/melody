@@ -15,6 +15,7 @@ void main() async {
   } catch (e, stackTrace) {
     debugPrint('[Main ERROR] Failed to initialize notification service: $e');
     debugPrint('[Main ERROR] Stack trace: $stackTrace');
+    // Continue without notifications - they're optional for core functionality
   }
   
   runApp(

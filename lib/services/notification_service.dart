@@ -336,13 +336,26 @@ class NotificationService extends ChangeNotifier {
   /// Cancel a notification by ID.
   Future<void> cancelNotification(int id) async {
     if (!_isInitialized) return;
-    await _flutterLocalNotificationsPlugin.cancel(id);
+    try {
+      await _flutterLocalNotificationsPlugin.cancel(id);
+    } catch (e, stackTrace) {
+      // Silently ignore cancellation errors to prevent crashes
+      // This can happen with certain Android versions due to type parameter issues
+      debugPrint('[NotificationService] Failed to cancel notification $id: $e');
+      debugPrint('[NotificationService] Stack trace: $stackTrace');
+    }
   }
 
   /// Cancel all notifications.
   Future<void> cancelAllNotifications() async {
     if (!_isInitialized) return;
-    await _flutterLocalNotificationsPlugin.cancelAll();
+    try {
+      await _flutterLocalNotificationsPlugin.cancelAll();
+    } catch (e, stackTrace) {
+      // Silently ignore cancellation errors to prevent crashes
+      debugPrint('[NotificationService] Failed to cancel all notifications: $e');
+      debugPrint('[NotificationService] Stack trace: $stackTrace');
+    }
   }
 
   @override
