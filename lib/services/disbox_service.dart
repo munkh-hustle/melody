@@ -1089,33 +1089,49 @@ class DisboxService extends ChangeNotifier {
       var uploadedBytes = 0;
 
       for (int i = 0; i < chunks.length; i++) {
-        try {
-          final chunkData = await ChunkUtils.readChunk(file, i);
+        int retryCount = 0;
+        const maxRetries = 5;
+        bool success = false;
 
-          print(
-              'Uploading chunk ${i + 1}/${chunks.length} (${chunkData.length} bytes)');
+        while (!success && retryCount < maxRetries) {
+          try {
+            final chunkData = await ChunkUtils.readChunk(file, i);
 
-          final messageId = await _uploadAttachment(
-            chunkData,
-            filename: '${filename}.part$i',
-            contentType: 'application/octet-stream',
-          );
+            print(
+                'Uploading chunk ${i + 1}/${chunks.length} (${chunkData.length} bytes)');
 
-          chunkMessageIds.add(messageId);
-          uploadedBytes += chunkData.length;
+            final messageId = await _uploadAttachment(
+              chunkData,
+              filename: '${filename}.part$i',
+              contentType: 'application/octet-stream',
+            );
 
-          // Update progress stream
-          final progress = uploadedBytes / fileSize;
-          _uploadProgressController.add(progress);
+            chunkMessageIds.add(messageId);
+            uploadedBytes += chunkData.length;
 
-          print(
-              'Chunk ${i + 1}/${chunks.length} uploaded successfully. Message ID: $messageId');
-          onProgress?.call(uploadedBytes, fileSize);
-        } catch (e, stackTrace) {
-          print(
-              '[UPLOAD ERROR] Failed to upload chunk ${i + 1}/${chunks.length}: $e');
-          print('[UPLOAD ERROR] Stack Trace: $stackTrace');
-          rethrow;
+            // Update progress stream
+            final progress = uploadedBytes / fileSize;
+            _uploadProgressController.add(progress);
+
+            print(
+                'Chunk ${i + 1}/${chunks.length} uploaded successfully. Message ID: $messageId');
+            onProgress?.call(uploadedBytes, fileSize);
+            success = true;
+          } catch (e, stackTrace) {
+            retryCount++;
+            if (retryCount >= maxRetries) {
+              print(
+                  '[UPLOAD ERROR] Failed to upload chunk ${i + 1}/${chunks.length} after $maxRetries retries: $e');
+              print('[UPLOAD ERROR] Stack Trace: $stackTrace');
+              rethrow;
+            }
+            
+            // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+            final delayMs = (1000 * (1 << (retryCount - 1)));
+            print(
+                '[UPLOAD] Chunk ${i + 1}/${chunks.length} failed (attempt $retryCount/$maxRetries). Retrying in ${delayMs}ms...');
+            await Future.delayed(Duration(milliseconds: delayMs));
+          }
         }
       }
     } else {
