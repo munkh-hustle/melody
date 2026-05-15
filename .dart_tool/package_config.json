@@ -134,6 +134,24 @@
       "languageVersion": "3.8"
     },
     {
+      "name": "flutter_local_notifications",
+      "rootUri": "file:///C:/Users/sodoc/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_local_notifications-18.0.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.1"
+    },
+    {
+      "name": "flutter_local_notifications_linux",
+      "rootUri": "file:///C:/Users/sodoc/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_local_notifications_linux-5.0.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.1"
+    },
+    {
+      "name": "flutter_local_notifications_platform_interface",
+      "rootUri": "file:///C:/Users/sodoc/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_local_notifications_platform_interface-8.0.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.1"
+    },
+    {
       "name": "flutter_plugin_android_lifecycle",
       "rootUri": "file:///C:/Users/sodoc/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_plugin_android_lifecycle-2.0.34",
       "packageUri": "lib/",
@@ -174,6 +192,12 @@
       "rootUri": "file:///C:/Users/sodoc/AppData/Local/Pub/Cache/hosted/pub.dev/hooks-1.0.3",
       "packageUri": "lib/",
       "languageVersion": "3.10"
+    },
+    {
+      "name": "http",
+      "rootUri": "file:///C:/Users/sodoc/AppData/Local/Pub/Cache/hosted/pub.dev/http-1.6.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.4"
     },
     {
       "name": "http_parser",
@@ -540,6 +564,12 @@
       "rootUri": "file:///C:/Users/sodoc/AppData/Local/Pub/Cache/hosted/pub.dev/test_api-0.7.9",
       "packageUri": "lib/",
       "languageVersion": "3.7"
+    },
+    {
+      "name": "timezone",
+      "rootUri": "file:///C:/Users/sodoc/AppData/Local/Pub/Cache/hosted/pub.dev/timezone-0.10.1",
+      "packageUri": "lib/",
+      "languageVersion": "2.19"
     },
     {
       "name": "typed_data",

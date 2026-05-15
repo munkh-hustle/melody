@@ -2184,8 +2184,6 @@ class DisboxService extends ChangeNotifier {
         
         // Actually, we have the current message ID. Let's try to get channel info
         // and fetch recent messages to find other batches
-        final apiUrl = _getWebhookApiUrl();
-        final channelId = message['channel_id'] as String;
         
         // Try fetching channel messages to find other batches
         // Note: This requires the webhook to have permissions to read messages
