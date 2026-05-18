@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 
-/// A dialog that shows upload/download progress.
+/// A dialog that shows upload/download progress with stop/resume controls.
 class ProgressDialog extends StatefulWidget {
   final String title;
   final String message;
   final double? initialProgress; // null for indeterminate
   final Stream<double>? progressStream; // Stream of progress updates (0.0-1.0)
+  final VoidCallback? onStop; // Callback when stop button is pressed
+  final VoidCallback? onResume; // Callback when resume button is pressed
+  final bool isPaused; // Whether the transfer is currently paused
+  final bool allowResume; // Whether resume is available (for future implementation)
 
   const ProgressDialog({
     super.key,
@@ -13,6 +17,10 @@ class ProgressDialog extends StatefulWidget {
     required this.message,
     this.initialProgress,
     this.progressStream,
+    this.onStop,
+    this.onResume,
+    this.isPaused = false,
+    this.allowResume = false,
   });
 
   @override
@@ -57,6 +65,39 @@ class _ProgressDialogState extends State<ProgressDialog> {
                   ],
                 )
               : const CircularProgressIndicator(),
+          const SizedBox(height: 24),
+          // Stop/Resume buttons
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              if (!widget.isPaused && widget.onStop != null)
+                ElevatedButton.icon(
+                  onPressed: () {
+                    widget.onStop!();
+                    // Don't pop here - let the stream listener handle dialog closing
+                  },
+                  icon: const Icon(Icons.stop),
+                  label: const Text('Stop'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              if (widget.isPaused && widget.onResume != null && widget.allowResume)
+                ElevatedButton.icon(
+                  onPressed: () {
+                    widget.onResume!();
+                    // Don't pop here - will be closed after resume completes
+                  },
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Resume'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
     );

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'dart:async';
 
 /// Service for managing local notifications for upload/download progress.
 class NotificationService extends ChangeNotifier {
@@ -10,6 +11,30 @@ class NotificationService extends ChangeNotifier {
 
   bool _isInitialized = false;
   int _notificationId = 0;
+
+  // Broadcast streams for notification actions
+  final _stopUploadController = StreamController<int>.broadcast();
+  final _resumeUploadController = StreamController<int>.broadcast();
+  final _stopDownloadController = StreamController<int>.broadcast();
+  final _resumeDownloadController = StreamController<int>.broadcast();
+
+  /// Stream of stop upload actions with notification ID
+  Stream<int> get onStopUpload => _stopUploadController.stream;
+
+  /// Stream of resume upload actions with notification ID
+  Stream<int> get onResumeUpload => _resumeUploadController.stream;
+
+  /// Stream of stop download actions with notification ID
+  Stream<int> get onStopDownload => _stopDownloadController.stream;
+
+  /// Stream of resume download actions with notification ID
+  Stream<int> get onResumeDownload => _resumeDownloadController.stream;
+
+  /// Action button IDs
+  static const String stopUploadActionId = 'stop_upload';
+  static const String resumeUploadActionId = 'resume_upload';
+  static const String stopDownloadActionId = 'stop_download';
+  static const String resumeDownloadActionId = 'resume_download';
 
   /// Channel for upload notifications
   static const AndroidNotificationChannel _uploadChannel =
@@ -94,7 +119,7 @@ class NotificationService extends ChangeNotifier {
     }
   }
 
-  /// Create Android notification channels.
+  /// Create Android notification channels with action buttons.
   Future<void> _createNotificationChannels() async {
     if (Platform.isAndroid) {
       final androidPlugin =
@@ -102,18 +127,109 @@ class NotificationService extends ChangeNotifier {
               AndroidFlutterLocalNotificationsPlugin>();
 
       if (androidPlugin != null) {
-        await androidPlugin.createNotificationChannel(_uploadChannel);
-        await androidPlugin.createNotificationChannel(_downloadChannel);
+        // Create action buttons for upload notifications
+        final stopUploadAction = const AndroidNotificationAction(
+          stopUploadActionId,
+          'Stop',
+          showsUserInterface: false,
+          cancelNotification: false,
+        );
+        
+        final resumeUploadAction = const AndroidNotificationAction(
+          resumeUploadActionId,
+          'Resume',
+          showsUserInterface: false,
+          cancelNotification: false,
+        );
+
+        // Create action buttons for download notifications
+        final stopDownloadAction = const AndroidNotificationAction(
+          stopDownloadActionId,
+          'Stop',
+          showsUserInterface: false,
+          cancelNotification: false,
+        );
+        
+        final resumeDownloadAction = const AndroidNotificationAction(
+          resumeDownloadActionId,
+          'Resume',
+          showsUserInterface: false,
+          cancelNotification: false,
+        );
+
+        // Create upload channel with actions
+        final uploadChannelWithActions = AndroidNotificationChannel(
+          _uploadChannel.id,
+          _uploadChannel.name,
+          description: _uploadChannel.description,
+          importance: Importance.low,
+          showBadge: false,
+        );
+        
+        // Create download channel with actions
+        final downloadChannelWithActions = AndroidNotificationChannel(
+          _downloadChannel.id,
+          _downloadChannel.name,
+          description: _downloadChannel.description,
+          importance: Importance.low,
+          showBadge: false,
+        );
+
+        await androidPlugin.createNotificationChannel(uploadChannelWithActions);
+        await androidPlugin.createNotificationChannel(downloadChannelWithActions);
         await androidPlugin.createNotificationChannel(_completionChannel);
-        debugPrint('[NotificationService] Created notification channels');
+        
+        // Store action sets for later use
+        _uploadActionSet = [stopUploadAction, resumeUploadAction];
+        
+        _downloadActionSet = [stopDownloadAction, resumeDownloadAction];
+        
+        debugPrint('[NotificationService] Created notification channels with action buttons');
       }
     }
   }
 
-  /// Handle notification tap response.
+  // Action sets for notifications
+  List<AndroidNotificationAction>? _uploadActionSet;
+  List<AndroidNotificationAction>? _downloadActionSet;
+
+  /// Handle notification tap response including action buttons.
   void _onNotificationResponse(NotificationResponse response) {
-    debugPrint('[NotificationService] Notification tapped: ${response.payload}');
-    // You can add navigation logic here based on notification payload
+    debugPrint('[NotificationService] Notification response: ${response.actionId}, payload: ${response.payload}');
+    
+    // Extract notification ID from payload (format: "upload:id" or "download:id")
+    final payload = response.payload ?? '';
+    final parts = payload.split(':');
+    if (parts.length < 2) return;
+    
+    final type = parts[0]; // 'upload' or 'download'
+    final id = int.tryParse(parts[1]);
+    if (id == null) return;
+    
+    // Handle action button taps
+    final actionId = response.actionId;
+    if (actionId != null) {
+      if (type == 'upload') {
+        if (actionId == stopUploadActionId) {
+          debugPrint('[NotificationService] Stop upload action triggered for notification $id');
+          _stopUploadController.add(id);
+        } else if (actionId == resumeUploadActionId) {
+          debugPrint('[NotificationService] Resume upload action triggered for notification $id');
+          _resumeUploadController.add(id);
+        }
+      } else if (type == 'download') {
+        if (actionId == stopDownloadActionId) {
+          debugPrint('[NotificationService] Stop download action triggered for notification $id');
+          _stopDownloadController.add(id);
+        } else if (actionId == resumeDownloadActionId) {
+          debugPrint('[NotificationService] Resume download action triggered for notification $id');
+          _resumeDownloadController.add(id);
+        }
+      }
+    } else if (response.notificationResponseType == NotificationResponseType.selectedNotification) {
+      // Regular notification tap - could navigate to app
+      debugPrint('[NotificationService] Notification tapped: $payload');
+    }
   }
 
   /// Generate a unique notification ID.
@@ -127,10 +243,12 @@ class NotificationService extends ChangeNotifier {
   /// [fileName] - Name of the file being uploaded
   /// [progress] - Progress from 0.0 to 1.0
   /// [notificationId] - Optional ID to update an existing notification
+  /// [isPaused] - Whether the upload is paused (shows resume button)
   Future<int> showUploadProgress({
     required String fileName,
     required double progress,
     int? notificationId,
+    bool isPaused = false,
   }) async {
     if (!_isInitialized) {
       debugPrint('[NotificationService] Not initialized, skipping notification');
@@ -139,6 +257,27 @@ class NotificationService extends ChangeNotifier {
 
     final id = notificationId ?? _generateNotificationId();
     final percent = (progress * 100).toInt().clamp(0, 100);
+
+    // Build actions list based on pause state
+    List<AndroidNotificationAction>? actions;
+    if (_uploadActionSet != null) {
+      // Always show stop button, show resume only when paused
+      actions = [
+        const AndroidNotificationAction(
+          stopUploadActionId,
+          'Stop',
+          showsUserInterface: false,
+          cancelNotification: false,
+        ),
+        if (isPaused)
+          const AndroidNotificationAction(
+            resumeUploadActionId,
+            'Resume',
+            showsUserInterface: false,
+            cancelNotification: false,
+          ),
+      ];
+    }
 
     final androidDetails = AndroidNotificationDetails(
       _uploadChannel.id,
@@ -152,9 +291,10 @@ class NotificationService extends ChangeNotifier {
       showProgress: true,
       maxProgress: 100,
       progress: percent,
+      actions: actions,
       styleInformation: BigTextStyleInformation(
-        'Uploading $fileName...',
-        contentTitle: 'Uploading',
+        isPaused ? 'Upload paused: $fileName' : 'Uploading $fileName...',
+        contentTitle: isPaused ? 'Upload Paused' : 'Uploading',
         summaryText: '$percent% complete',
       ),
     );
@@ -169,7 +309,7 @@ class NotificationService extends ChangeNotifier {
 
     await _flutterLocalNotificationsPlugin.show(
       id,
-      'Uploading $fileName',
+      isPaused ? 'Upload Paused: $fileName' : 'Uploading $fileName',
       '$percent% complete',
       details,
       payload: 'upload:$id',
@@ -183,10 +323,12 @@ class NotificationService extends ChangeNotifier {
   /// [fileName] - Name of the file being downloaded
   /// [progress] - Progress from 0.0 to 1.0
   /// [notificationId] - Optional ID to update an existing notification
+  /// [isPaused] - Whether the download is paused (shows resume button)
   Future<int> showDownloadProgress({
     required String fileName,
     required double progress,
     int? notificationId,
+    bool isPaused = false,
   }) async {
     if (!_isInitialized) {
       debugPrint('[NotificationService] Not initialized, skipping notification');
@@ -195,6 +337,27 @@ class NotificationService extends ChangeNotifier {
 
     final id = notificationId ?? _generateNotificationId();
     final percent = (progress * 100).toInt().clamp(0, 100);
+
+    // Build actions list based on pause state
+    List<AndroidNotificationAction>? actions;
+    if (_downloadActionSet != null) {
+      // Always show stop button, show resume only when paused
+      actions = [
+        const AndroidNotificationAction(
+          stopDownloadActionId,
+          'Stop',
+          showsUserInterface: false,
+          cancelNotification: false,
+        ),
+        if (isPaused)
+          const AndroidNotificationAction(
+            resumeDownloadActionId,
+            'Resume',
+            showsUserInterface: false,
+            cancelNotification: false,
+          ),
+      ];
+    }
 
     final androidDetails = AndroidNotificationDetails(
       _downloadChannel.id,
@@ -208,9 +371,10 @@ class NotificationService extends ChangeNotifier {
       showProgress: true,
       maxProgress: 100,
       progress: percent,
+      actions: actions,
       styleInformation: BigTextStyleInformation(
-        'Downloading $fileName...',
-        contentTitle: 'Downloading',
+        isPaused ? 'Download paused: $fileName' : 'Downloading $fileName...',
+        contentTitle: isPaused ? 'Download Paused' : 'Downloading',
         summaryText: '$percent% complete',
       ),
     );
@@ -225,7 +389,7 @@ class NotificationService extends ChangeNotifier {
 
     await _flutterLocalNotificationsPlugin.show(
       id,
-      'Downloading $fileName',
+      isPaused ? 'Download Paused: $fileName' : 'Downloading $fileName',
       '$percent% complete',
       details,
       payload: 'download:$id',
@@ -360,6 +524,12 @@ class NotificationService extends ChangeNotifier {
 
   @override
   void dispose() {
+    // Close streams
+    _stopUploadController.close();
+    _resumeUploadController.close();
+    _stopDownloadController.close();
+    _resumeDownloadController.close();
+    
     cancelAllNotifications();
     super.dispose();
   }
