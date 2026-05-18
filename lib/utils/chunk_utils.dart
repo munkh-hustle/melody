@@ -80,6 +80,14 @@ class ChunkUtils {
     }
   }
 
+  /// Get the size of a specific chunk without reading it
+  static Future<int> readChunkLength(File file, int chunkIndex, {int? customChunkSize}) async {
+    final chunkSize = customChunkSize ?? DisboxConstants.chunkSize;
+    final startOffset = chunkIndex * chunkSize;
+    final remaining = file.lengthSync() - startOffset;
+    return min(chunkSize, remaining);
+  }
+
   /// Generate a unique session ID for tracking chunk uploads
   static String _generateSessionId() {
     final random = Random.secure();

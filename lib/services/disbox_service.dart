@@ -192,9 +192,10 @@ class DisboxService extends ChangeNotifier {
       var uploadedBytes = _uploadedBytes;
       
       for (int i = 0; i < chunks.length; i++) {
-        // Skip already uploaded chunks
-        if (_downloadedChunkIndices.contains(i) || i < _uploadedChunkIds.length) {
+        // Skip already uploaded chunks (chunks are uploaded in order, so if we have N IDs, first N chunks are done)
+        if (i < _uploadedChunkIds.length) {
           print('[RESUME UPLOAD] Skipping already uploaded chunk $i');
+          uploadedBytes += await ChunkUtils.readChunkLength(file, i);
           continue;
         }
         

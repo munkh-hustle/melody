@@ -74,7 +74,7 @@ class _ProgressDialogState extends State<ProgressDialog> {
                 ElevatedButton.icon(
                   onPressed: () {
                     widget.onStop!();
-                    Navigator.of(context).pop();
+                    // Don't pop here - let the stream listener handle dialog closing
                   },
                   icon: const Icon(Icons.stop),
                   label: const Text('Stop'),
@@ -87,7 +87,7 @@ class _ProgressDialogState extends State<ProgressDialog> {
                 ElevatedButton.icon(
                   onPressed: () {
                     widget.onResume!();
-                    Navigator.of(context).pop();
+                    // Don't pop here - will be closed after resume completes
                   },
                   icon: const Icon(Icons.play_arrow),
                   label: const Text('Resume'),
@@ -96,9 +96,6 @@ class _ProgressDialogState extends State<ProgressDialog> {
                     foregroundColor: Colors.white,
                   ),
                 ),
-              if (!widget.isPaused && widget.onStop != null && !widget.allowResume)
-                // Spacer to center the stop button when resume is not available
-                const SizedBox(width: 100),
             ],
           ),
         ],

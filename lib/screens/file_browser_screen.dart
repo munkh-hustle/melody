@@ -261,12 +261,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         progressStream: _disboxService.uploadProgress,
         onStop: () {
           _disboxService.stopUpload();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Upload stopped'),
-              duration: Duration(seconds: 2),
-            ),
-          );
+          // Dialog will be closed by the stream listener detecting cancellation
         },
         onResume: () async {
           try {
@@ -415,22 +410,61 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
             Navigator.pop(context);
           }
           
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Upload stopped - Tap upload again to resume'),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 3),
-              behavior: SnackBarBehavior.floating,
-              action: SnackBarAction(
-                label: 'Resume',
-                textColor: Colors.white,
-                onPressed: () {
-                  // Re-trigger upload which will resume from last chunk
-                  _uploadFile(file);
-                },
+          // Show snackbar with resume option
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Upload stopped'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 5),
+                behavior: SnackBarBehavior.floating,
+                action: SnackBarAction(
+                  label: 'Resume',
+                  textColor: Colors.white,
+                  onPressed: () async {
+                    // Resume the upload using the service's resume capability
+                    try {
+                      await _disboxService.resumeUpload(
+                        onProgress: (current, total) {
+                          setState(() {
+                            currentProgress = current / total;
+                          });
+                        },
+                      );
+                      
+                      // Show success after resume completes
+                      if (_notificationService != null && _notificationService!.isInitialized) {
+                        await _notificationService!.showTransferComplete(
+                          fileName: fileName,
+                          isUpload: true,
+                        );
+                      }
+                      
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('File uploaded successfully'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                        _loadFiles();
+                      }
+                    } catch (resumeError) {
+                      debugPrint('Resume failed: $resumeError');
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Resume failed: $resumeError'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
               ),
-            ),
-          );
+            );
+          }
           return;
         }
         
