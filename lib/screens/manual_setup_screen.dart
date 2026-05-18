@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/disbox_service.dart';
 import 'file_browser_screen.dart';
+import 'import_screen.dart';
 
 class ManualSetupScreen extends StatefulWidget {
   const ManualSetupScreen({super.key});
@@ -33,6 +34,7 @@ class _ManualSetupScreenState extends State<ManualSetupScreen> {
       await service.setWebhookUrl(webhookUrl);
       
       if (mounted) {
+        // Navigate to file browser screen after successful setup
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const FileBrowserScreen()),
@@ -70,6 +72,14 @@ class _ManualSetupScreenState extends State<ManualSetupScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Manual Setup'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const ImportScreen()),
+          ),
+          tooltip: 'Back',
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),

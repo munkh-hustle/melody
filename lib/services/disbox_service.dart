@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as Math;
 import 'dart:typed_data';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -50,6 +51,9 @@ class DisboxService extends ChangeNotifier {
 
   // Cache for file metadata (in production, use Hive or SharedPreferences)
   final Map<String, DisboxFile> _fileCache = {};
+
+  // SharedPreferences keys
+  static const String _savedAccountsKey = 'saved_webhook_accounts';
 
   // Stream controllers for progress updates
   final _uploadProgressController = BehaviorSubject<double>.seeded(0.0);
@@ -511,6 +515,10 @@ class DisboxService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('webhook_url', webhookUrl);
     await prefs.setString('account_id', _accountId!);
+    
+    // Add to saved accounts list for easy re-selection
+    await _addAccountToSavedList(webhookUrl, _accountId!);
+    
     print('[DisboxService] Saved webhook URL to SharedPreferences');
 
     // Load existing file tree from local storage
@@ -567,6 +575,9 @@ class DisboxService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('webhook_url', webhookUrl);
       await prefs.setString('account_id', _accountId!);
+      
+      // Add to saved accounts list for easy re-selection
+      await _addAccountToSavedList(webhookUrl, _accountId!);
 
       print('[DisboxService] Saved webhook URL to SharedPreferences');
 
@@ -737,6 +748,11 @@ class DisboxService extends ChangeNotifier {
       await _saveFileTree();
       print('[DisboxService] File tree saved (${stopwatch.elapsedMilliseconds}ms)');
 
+      // Add to saved accounts list for easy re-selection (if webhook URL is available)
+      if (_webhookUrl != null && _accountId != null) {
+        await _addAccountToSavedList(_webhookUrl!, _accountId!);
+      }
+
       print('[DisboxService] Successfully imported metadata for: ${disboxFile.name} (total: ${stopwatch.elapsedMilliseconds}ms)');
       notifyListeners();
       return disboxFile;
@@ -854,6 +870,11 @@ class DisboxService extends ChangeNotifier {
       }
     }
     
+    // Add to saved accounts list for easy re-selection (if webhook URL is available)
+    if (_webhookUrl != null && _accountId != null) {
+      await _addAccountToSavedList(_webhookUrl!, _accountId!);
+    }
+    
     return successCount;
   }
 
@@ -862,6 +883,164 @@ class DisboxService extends ChangeNotifier {
 
   /// Get the account ID (hashed webhook URL)
   String? get accountId => _accountId;
+
+  /// Get list of previously saved accounts for easy re-selection
+  Future<List<Map<String, String>>> getSavedAccounts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final accountsJson = prefs.getStringList(_savedAccountsKey) ?? [];
+    
+    final List<Map<String, String>> accounts = [];
+    for (final jsonStr in accountsJson) {
+      try {
+        final Map<String, dynamic> data = jsonDecode(jsonStr);
+        // Use stored label if available, otherwise generate from webhook URL
+        String? storedLabel = data['label'] as String?;
+        String label;
+        if (storedLabel != null && storedLabel.isNotEmpty) {
+          label = storedLabel;
+        } else {
+          // Generate label asynchronously for backward compatibility
+          label = await _generateAccountLabel(data['webhook_url'] as String);
+        }
+        accounts.add({
+          'webhook_url': data['webhook_url'] as String,
+          'account_id': data['account_id'] as String,
+          'label': label,
+        });
+      } catch (e) {
+        print('[DisboxService] Error parsing saved account: $e');
+      }
+    }
+    
+    // Sort by most recently used first
+    return accounts.reversed.toList();
+  }
+
+  /// Add an account to the saved accounts list
+  Future<void> _addAccountToSavedList(String webhookUrl, String accountId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final accountsJson = prefs.getStringList(_savedAccountsKey) ?? [];
+    
+    // Remove if already exists (to update position and avoid duplicates)
+    final updatedList = accountsJson.where((jsonStr) {
+      try {
+        final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+        return data['account_id'] != accountId;
+      } catch (e) {
+        return false;
+      }
+    }).toList();
+    
+    // Generate label asynchronously
+    final label = await _generateAccountLabel(webhookUrl);
+    
+    // Add to end (most recent)
+    updatedList.add(jsonEncode({
+      'webhook_url': webhookUrl,
+      'account_id': accountId,
+      'label': label,
+    }));
+    
+    // Keep only last 10 accounts to avoid clutter
+    if (updatedList.length > 10) {
+      updatedList.removeAt(0);
+    }
+    
+    await prefs.setStringList(_savedAccountsKey, updatedList);
+    print('[DisboxService] Added account to saved list: $accountId');
+  }
+
+  /// Generate a human-readable label for an account based on webhook URL
+  Future<String> _generateAccountLabel(String webhookUrl) async {
+    try {
+      // Try to fetch webhook name from Discord API
+      final response = await _dio.get(webhookUrl);
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = response.data as Map<String, dynamic>;
+        final name = data['name'] as String?;
+        if (name != null && name.isNotEmpty) {
+          return name;
+        }
+      }
+    } catch (e) {
+      print('[DisboxService] Failed to fetch webhook name: $e');
+      // Fallback to extracting webhook ID
+    }
+    
+    try {
+      final uri = Uri.parse(webhookUrl);
+      // Extract webhook ID as a short identifier
+      final segments = uri.pathSegments;
+      final webhookIndex = segments.indexOf('webhooks');
+      if (webhookIndex != -1 && webhookIndex + 1 < segments.length) {
+        final webhookId = segments[webhookIndex + 1];
+        // Show first 8 chars of webhook ID
+        return 'Webhook ${webhookId.substring(0, Math.min(8, webhookId.length))}';
+      }
+    } catch (e) {
+      // Fallback
+    }
+    return 'Discord Account';
+  }
+
+  /// Load a previously saved account by account ID
+  Future<bool> loadSavedAccount(String accountId) async {
+    final accounts = await getSavedAccounts();
+    final account = accounts.firstWhere(
+      (a) => a['account_id'] == accountId,
+      orElse: () => {},
+    );
+    
+    if (account.isEmpty) {
+      return false;
+    }
+    
+    final webhookUrl = account['webhook_url'];
+    if (webhookUrl == null) {
+      return false;
+    }
+    
+    // Initialize Hive if needed
+    if (_fileTreeBox == null) {
+      await _initHive();
+    }
+    
+    // Set webhook URL
+    _webhookUrl = webhookUrl;
+    _accountId = accountId;
+    
+    // Save to current session prefs
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('webhook_url', webhookUrl);
+    await prefs.setString('account_id', accountId);
+    
+    // Move to most recent position
+    await _addAccountToSavedList(webhookUrl, accountId);
+    
+    // Load file tree
+    await _loadFileTree();
+    
+    print('[DisboxService] Loaded saved account: $accountId');
+    return true;
+  }
+
+  /// Remove an account from the saved accounts list
+  Future<void> removeSavedAccount(String accountId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final accountsJson = prefs.getStringList(_savedAccountsKey) ?? [];
+    
+    final updatedList = accountsJson.where((jsonStr) {
+      try {
+        final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+        return data['account_id'] != accountId;
+      } catch (e) {
+        return false;
+      }
+    }).toList();
+    
+    await prefs.setStringList(_savedAccountsKey, updatedList);
+    print('[DisboxService] Removed account from saved list: $accountId');
+  }
 
   /// Extract webhook ID and token from URL
   ///
