@@ -1474,7 +1474,8 @@ class DisboxService extends ChangeNotifier {
             } on DioException catch (e) {
               // Check if this was a cancellation
               if (e.type == DioExceptionType.cancel) {
-                print('[UPLOAD CANCELLED] Upload cancelled by user');
+                print('[UPLOAD STOPPED] Upload intentionally stopped by user');
+                // Don't print stack trace for intentional stops
                 rethrow;
               }
               
@@ -1518,7 +1519,8 @@ class DisboxService extends ChangeNotifier {
         } on DioException catch (e) {
           // Check if this was a cancellation
           if (e.type == DioExceptionType.cancel) {
-            print('[UPLOAD CANCELLED] Upload cancelled by user');
+            print('[UPLOAD STOPPED] Upload intentionally stopped by user');
+            // Don't print stack trace for intentional stops
             rethrow;
           }
           
@@ -1530,7 +1532,7 @@ class DisboxService extends ChangeNotifier {
     } on DioException catch (e) {
       // Handle cancellation gracefully - keep state for resume
       if (e.type == DioExceptionType.cancel) {
-        print('[UPLOAD] Upload was stopped/cancelled');
+        print('[UPLOAD STOPPED] Upload intentionally stopped by user');
         _isUploading = false;
         _isUploadPaused = true; // Keep paused state for resume
         // Don't cleanup chunks on manual stop - user can resume later
