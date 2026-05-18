@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'rxdart/rxdart.dart';
+import 'dart:async';
 
 /// Service for managing local notifications for upload/download progress.
 class NotificationService extends ChangeNotifier {
@@ -13,10 +13,10 @@ class NotificationService extends ChangeNotifier {
   int _notificationId = 0;
 
   // Broadcast streams for notification actions
-  final _stopUploadController = PublishSubject<int>();
-  final _resumeUploadController = PublishSubject<int>();
-  final _stopDownloadController = PublishSubject<int>();
-  final _resumeDownloadController = PublishSubject<int>();
+  final _stopUploadController = StreamController<int>.broadcast();
+  final _resumeUploadController = StreamController<int>.broadcast();
+  final _stopDownloadController = StreamController<int>.broadcast();
+  final _resumeDownloadController = StreamController<int>.broadcast();
 
   /// Stream of stop upload actions with notification ID
   Stream<int> get onStopUpload => _stopUploadController.stream;
@@ -127,12 +127,6 @@ class NotificationService extends ChangeNotifier {
               AndroidFlutterLocalNotificationsPlugin>();
 
       if (androidPlugin != null) {
-        // Create notification categories for grouping
-        final uploadCategory = AndroidNotificationCategory(
-          'transfer',
-          AndroidNotificationCategoryPriority.high,
-        );
-
         // Create action buttons for upload notifications
         final stopUploadAction = const AndroidNotificationAction(
           stopUploadActionId,
@@ -170,7 +164,6 @@ class NotificationService extends ChangeNotifier {
           description: _uploadChannel.description,
           importance: Importance.low,
           showBadge: false,
-          category: uploadCategory,
         );
         
         // Create download channel with actions
@@ -180,7 +173,6 @@ class NotificationService extends ChangeNotifier {
           description: _downloadChannel.description,
           importance: Importance.low,
           showBadge: false,
-          category: uploadCategory,
         );
 
         await androidPlugin.createNotificationChannel(uploadChannelWithActions);
@@ -188,15 +180,9 @@ class NotificationService extends ChangeNotifier {
         await androidPlugin.createNotificationChannel(_completionChannel);
         
         // Store action sets for later use
-        _uploadActionSet = AndroidNotificationActionGroup(
-          'upload_actions',
-          [stopUploadAction, resumeUploadAction],
-        );
+        _uploadActionSet = [stopUploadAction, resumeUploadAction];
         
-        _downloadActionSet = AndroidNotificationActionGroup(
-          'download_actions',
-          [stopDownloadAction, resumeDownloadAction],
-        );
+        _downloadActionSet = [stopDownloadAction, resumeDownloadAction];
         
         debugPrint('[NotificationService] Created notification channels with action buttons');
       }
@@ -204,12 +190,12 @@ class NotificationService extends ChangeNotifier {
   }
 
   // Action sets for notifications
-  AndroidNotificationActionGroup? _uploadActionSet;
-  AndroidNotificationActionGroup? _downloadActionSet;
+  List<AndroidNotificationAction>? _uploadActionSet;
+  List<AndroidNotificationAction>? _downloadActionSet;
 
   /// Handle notification tap response including action buttons.
   void _onNotificationResponse(NotificationResponse response) {
-    debugPrint('[NotificationService] Notification response: ${response.type}, actionId: ${response.actionId}, payload: ${response.payload}');
+    debugPrint('[NotificationService] Notification response: ${response.actionId}, payload: ${response.payload}');
     
     // Extract notification ID from payload (format: "upload:id" or "download:id")
     final payload = response.payload ?? '';
@@ -221,9 +207,8 @@ class NotificationService extends ChangeNotifier {
     if (id == null) return;
     
     // Handle action button taps
-    if (response.type == NotificationResponseType.selectedNotificationActionInput) {
-      final actionId = response.actionId;
-      
+    final actionId = response.actionId;
+    if (actionId != null) {
       if (type == 'upload') {
         if (actionId == stopUploadActionId) {
           debugPrint('[NotificationService] Stop upload action triggered for notification $id');
@@ -241,7 +226,7 @@ class NotificationService extends ChangeNotifier {
           _resumeDownloadController.add(id);
         }
       }
-    } else if (response.type == NotificationResponseType.selectedNotification) {
+    } else if (response.notificationResponseType == NotificationResponseType.selectedNotification) {
       // Regular notification tap - could navigate to app
       debugPrint('[NotificationService] Notification tapped: $payload');
     }

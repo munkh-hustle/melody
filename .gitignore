@@ -1,46 +1,37 @@
 ```
-# Compiled and build artifacts
-*.pyc
-__pycache__/
-*.o
-*.obj
-*.class
-*.exe
-*.dll
-*.so
-*.a
-*.out
-
 # Dependencies
-node_modules/
-venv/
-.venv/
+.pub/
+.buildlog
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+
+# Generated plugin code
+lib/generated_plugin_registrant.dart
+
+# Debug files
+**/android/**/gradle-wrapper.properties
+**/ios/Flutter/.last_build_id
+
+# Coverage
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Environment
 .env
 .env.local
 .env.*
+!.env.example
 
-# Build outputs
-dist/
-build/
-target/
-.gradle/
-
-# Python caches
-.mypy_cache/
-.pytest_cache/
-.coverage
-coverage/
-htmlcov/
-
-# Editors
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
-*.tmp
-
-# Logs
-*.log
 
 # OS generated files
 .DS_Store

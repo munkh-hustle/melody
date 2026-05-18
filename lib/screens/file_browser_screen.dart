@@ -51,6 +51,9 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
   StreamSubscription<int>? _resumeUploadSubscription;
   StreamSubscription<int>? _stopDownloadSubscription;
   StreamSubscription<int>? _resumeDownloadSubscription;
+  
+  // Current progress tracking
+  double _currentProgress = 0.0;
 
   @override
   void initState() {
@@ -88,9 +91,11 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         try {
           await _disboxService.resumeUpload(
             onProgress: (current, total) {
-              setState(() {
-                currentProgress = current / total;
-              });
+              if (mounted) {
+                setState(() {
+                  _currentProgress = current / total;
+                });
+              }
             },
           );
           
@@ -324,7 +329,6 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       }
       
       // Create a controller for progress updates
-      double currentProgress = 0.0;
       final fileName = result.files.first.name;
       
       // Show initial notification that upload is starting
@@ -351,9 +355,11 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
             // Resume the upload
             await _disboxService.resumeUpload(
               onProgress: (current, total) {
-                setState(() {
-                  currentProgress = current / total;
-                });
+                if (mounted) {
+                  setState(() {
+                    _currentProgress = current / total;
+                  });
+                }
               },
             );
             
@@ -434,9 +440,11 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
           file,
           folderPath: _currentPath,
           onProgress: (current, total) {
-            setState(() {
-              currentProgress = current / total;
-            });
+            if (mounted) {
+              setState(() {
+                _currentProgress = current / total;
+              });
+            }
           },
         );
 
@@ -510,9 +518,11 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
                     try {
                       await _disboxService.resumeUpload(
                         onProgress: (current, total) {
-                          setState(() {
-                            currentProgress = current / total;
-                          });
+                          if (mounted) {
+                            setState(() {
+                              _currentProgress = current / total;
+                            });
+                          }
                         },
                       );
                       
