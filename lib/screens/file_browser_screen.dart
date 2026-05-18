@@ -45,6 +45,12 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
   // Track notification IDs for upload/download
   int? _uploadNotificationId;
   int? _downloadNotificationId;
+  
+  // Stream subscriptions for notification actions
+  StreamSubscription<int>? _stopUploadSubscription;
+  StreamSubscription<int>? _resumeUploadSubscription;
+  StreamSubscription<int>? _stopDownloadSubscription;
+  StreamSubscription<int>? _resumeDownloadSubscription;
 
   @override
   void initState() {
@@ -58,6 +64,83 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
     super.didChangeDependencies();
     // Get notification service from provider
     _notificationService = context.read<NotificationService>();
+    
+    // Set up listeners for notification action buttons
+    _setupNotificationActionListeners();
+  }
+  
+  /// Set up listeners for notification action buttons (stop/resume)
+  void _setupNotificationActionListeners() {
+    if (_notificationService == null) return;
+    
+    // Listen for stop upload action from notification
+    _stopUploadSubscription = _notificationService!.onStopUpload.listen((notificationId) {
+      debugPrint('[FileBrowserScreen] Stop upload triggered from notification');
+      if (_disboxService.isUploading || _disboxService.isUploadPaused) {
+        _disboxService.stopUpload();
+      }
+    });
+    
+    // Listen for resume upload action from notification
+    _resumeUploadSubscription = _notificationService!.onResumeUpload.listen((notificationId) async {
+      debugPrint('[FileBrowserScreen] Resume upload triggered from notification');
+      if (_disboxService.isUploadPaused && _disboxService.uploadResumeInfo != null) {
+        try {
+          await _disboxService.resumeUpload(
+            onProgress: (current, total) {
+              setState(() {
+                currentProgress = current / total;
+              });
+            },
+          );
+          
+          // Show success after resume completes
+          if (_notificationService != null && _notificationService!.isInitialized) {
+            await _notificationService!.showTransferComplete(
+              fileName: _disboxService.uploadResumeInfo!['filePath'].toString().split('/').last,
+              isUpload: true,
+            );
+          }
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('File uploaded successfully'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            _loadFiles();
+          }
+        } catch (e) {
+          debugPrint('Resume upload from notification failed: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Resume failed: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      }
+    });
+    
+    // Listen for stop download action from notification
+    _stopDownloadSubscription = _notificationService!.onStopDownload.listen((notificationId) {
+      debugPrint('[FileBrowserScreen] Stop download triggered from notification');
+      if (_disboxService.isDownloading || _disboxService.isDownloadPaused) {
+        _disboxService.stopDownload();
+      }
+    });
+    
+    // Listen for resume download action from notification
+    _resumeDownloadSubscription = _notificationService!.onResumeDownload.listen((notificationId) async {
+      debugPrint('[FileBrowserScreen] Resume download triggered from notification');
+      if (_disboxService.isDownloadPaused && _disboxService.downloadResumeInfo != null) {
+        // Handle resume download from notification
+        // Implementation similar to upload resume
+      }
+    });
   }
 
   /// Initialize the service with the saved webhook URL
@@ -342,6 +425,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
               fileName: fileName,
               progress: progress,
               notificationId: _uploadNotificationId,
+              isPaused: _disboxService.isUploadPaused,
             );
           }
         });
@@ -672,6 +756,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
             fileName: fileName,
             progress: progress,
             notificationId: _downloadNotificationId,
+            isPaused: _disboxService.isDownloadPaused,
           );
         }
       });
@@ -1636,6 +1721,17 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       }
       print('[ClearCache ERROR] Failed to clear cache: $e');
     }
+  }
+
+  @override
+  void dispose() {
+    // Cancel notification action subscriptions
+    _stopUploadSubscription?.cancel();
+    _resumeUploadSubscription?.cancel();
+    _stopDownloadSubscription?.cancel();
+    _resumeDownloadSubscription?.cancel();
+    
+    super.dispose();
   }
 
   @override
