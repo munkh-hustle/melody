@@ -542,6 +542,9 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
     );
     
     // Show progress dialog with stream and stop/resume buttons
+    // Declare tempPath early so it can be used in onResume callback
+    String? tempPath;
+    
     final progressDialog = ProgressDialog(
       title: 'Downloading $fileName',
       message: 'Preparing download...',
@@ -578,8 +581,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
             _downloadNotificationId = null;
           }
           
-          // Continue with file save after resume...
-          // (Same logic as normal download completion)
+          // Complete the download process after resume
           await _completeDownload(file, tempPath!, fileName);
           
         } catch (e) {
@@ -604,7 +606,6 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       builder: (context) => progressDialog,
     );
 
-    String? tempPath;
     StreamSubscription? downloadSubscription;
     try {
       // Listen to download progress stream and update notifications
@@ -690,6 +691,61 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         _downloadNotificationId = null;
       }
       
+      // Complete the download process (save file, show success message)
+      await _completeDownload(file, tempPath!, fileName);
+    } catch (e) {
+      if (mounted) Navigator.pop(context); // Close progress dialog
+      
+      // Cancel the subscription on error
+      await downloadSubscription?.cancel();
+      
+      // Cancel download progress notification
+      if (_downloadNotificationId != null && _notificationService != null) {
+        try {
+          await _notificationService!.cancelNotification(_downloadNotificationId!);
+        } catch (e) {
+          // Ignore cancellation errors
+          debugPrint('Failed to cancel download notification: $e');
+        }
+        _downloadNotificationId = null;
+      }
+      
+      // Show error notification
+      if (_notificationService != null && _notificationService!.isInitialized) {
+        await _notificationService!.showTransferError(
+          fileName: fileName,
+          error: e.toString(),
+          isUpload: false,
+        );
+      }
+      
+      // Ensure temp file is cleaned up on error too
+      if (tempPath != null) {
+        try {
+          final tempFile = File(tempPath);
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+            print('[FileCopy] Cleaned up temp file on error: $tempPath');
+          }
+        } catch (cleanupError) {
+          print('[FileCopy WARNING] Could not delete temp file on error: $cleanupError');
+        }
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Download failed: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+  
+  /// Complete the download process after resume or normal completion
+  Future<void> _completeDownload(DisboxFile file, String tempPath, String fileName) async {
+    try {
       // Verify downloaded file has content
       final tempFile = File(tempPath);
       if (!await tempFile.exists()) {
@@ -765,19 +821,12 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         if (savedSize != fileSize) {
           print('[FileCopy WARNING] Saved file size ($savedSize) differs from original ($fileSize)');
         }
-        
-        // Notify media scanner about the new file (for Android)
-        if (Platform.isAndroid) {
-          // This helps the file appear in gallery/file manager apps
-          // We can't directly call MediaScannerConnection here without platform channel
-          // But creating the file in Documents should be enough
-        }
       } catch (e) {
         print('[FileCopy ERROR] Failed to save file: $e');
         rethrow;
       } finally {
         // ALWAYS clean up temporary file, even if save fails
-        if (tempPath != null) {
+        if (tempPath.isNotEmpty) {
           try {
             final tempFile = File(tempPath);
             if (await tempFile.exists()) {
@@ -815,22 +864,6 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         );
       }
     } catch (e) {
-      if (mounted) Navigator.pop(context); // Close progress dialog
-      
-      // Cancel the subscription on error
-      await downloadSubscription?.cancel();
-      
-      // Cancel download progress notification
-      if (_downloadNotificationId != null && _notificationService != null) {
-        try {
-          await _notificationService!.cancelNotification(_downloadNotificationId!);
-        } catch (e) {
-          // Ignore cancellation errors
-          debugPrint('Failed to cancel download notification: $e');
-        }
-        _downloadNotificationId = null;
-      }
-      
       // Show error notification
       if (_notificationService != null && _notificationService!.isInitialized) {
         await _notificationService!.showTransferError(
@@ -841,7 +874,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       }
       
       // Ensure temp file is cleaned up on error too
-      if (tempPath != null) {
+      if (tempPath.isNotEmpty) {
         try {
           final tempFile = File(tempPath);
           if (await tempFile.exists()) {
@@ -853,14 +886,17 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         }
       }
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Download failed: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Download failed: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      rethrow;
     }
   }
   

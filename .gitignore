@@ -1,37 +1,47 @@
-```
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+*.class
+*.exe
+*.dll
+*.so
+*.a
+*.out
+
 # Dependencies
-.pub/
-.buildlog
-.flutter-plugins
-.flutter-plugin-dependencies
-.packages
-
-# Build outputs
-build/
-.dart_tool/
-
-# Environment
+node_modules/
+venv/
+.venv/
 .env
 .env.local
 .env.*
 
-# Logs
+# Logs and temp files
 *.log
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# IDE
-.idea/
-.vscode/
+*.tmp
 *.swp
 *.swo
 
-# Coverage
+# Editors
+.vscode/
+.idea/
+
+# Build directories
+dist/
+build/
+target/
+.gradle/
+.mypy_cache/
+.pytest_cache/
 coverage/
 htmlcov/
-.coverage
+*.coverage
+
+# System files
+.DS_Store
+Thumbs.db
 
 # Compressed files
 *.zip
@@ -56,4 +66,3 @@ htmlcov/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
-```
