@@ -253,7 +253,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         ),
       );
       
-      // Show progress dialog with stream and stop button
+      // Show progress dialog with stream and stop/resume buttons
       final progressDialog = ProgressDialog(
         title: 'Uploading $fileName',
         message: '${fileSizeMB.toStringAsFixed(1)} MB - Please wait...',
@@ -268,8 +268,61 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
             ),
           );
         },
-        isPaused: false,
-        allowResume: false, // Resume not yet implemented
+        onResume: () async {
+          try {
+            // Resume the upload
+            await _disboxService.resumeUpload(
+              onProgress: (current, total) {
+                setState(() {
+                  currentProgress = current / total;
+                });
+              },
+            );
+            
+            if (mounted) Navigator.pop(context); // Close progress dialog
+            
+            // Cancel upload progress notification
+            if (_uploadNotificationId != null && _notificationService != null) {
+              try {
+                await _notificationService!.cancelNotification(_uploadNotificationId!);
+              } catch (e) {
+                debugPrint('Failed to cancel upload notification: $e');
+              }
+              _uploadNotificationId = null;
+            }
+            
+            // Show success notification
+            if (_notificationService != null && _notificationService!.isInitialized) {
+              await _notificationService!.showTransferComplete(
+                fileName: fileName,
+                isUpload: true,
+              );
+            }
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('File uploaded successfully'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 3),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+            
+            _loadFiles(); // Refresh file list
+          } catch (e) {
+            debugPrint('Resume upload failed: $e');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Resume failed: $e'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+        },
+        isPaused: _disboxService.isUploadPaused,
+        allowResume: _disboxService.isUploadPaused && _disboxService.uploadResumeInfo != null,
       );
       
       showDialog(
@@ -488,7 +541,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       ),
     );
     
-    // Show progress dialog with stream and stop button
+    // Show progress dialog with stream and stop/resume buttons
     final progressDialog = ProgressDialog(
       title: 'Downloading $fileName',
       message: 'Preparing download...',
@@ -503,8 +556,46 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
           ),
         );
       },
-      isPaused: false,
-      allowResume: false, // Resume not yet implemented
+      onResume: () async {
+        try {
+          // Resume the download
+          await _disboxService.resumeDownload(
+            tempPath!,
+            onProgress: (current, total) {
+              // Progress updates via stream
+            },
+          );
+          
+          if (mounted) Navigator.pop(context); // Close progress dialog
+          
+          // Cancel download progress notification
+          if (_downloadNotificationId != null && _notificationService != null) {
+            try {
+              await _notificationService!.cancelNotification(_downloadNotificationId!);
+            } catch (e) {
+              debugPrint('Failed to cancel download notification: $e');
+            }
+            _downloadNotificationId = null;
+          }
+          
+          // Continue with file save after resume...
+          // (Same logic as normal download completion)
+          await _completeDownload(file, tempPath!, fileName);
+          
+        } catch (e) {
+          debugPrint('Resume download failed: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Resume failed: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      },
+      isPaused: _disboxService.isDownloadPaused,
+      allowResume: _disboxService.isDownloadPaused && _disboxService.downloadResumeInfo != null,
     );
     
     showDialog(

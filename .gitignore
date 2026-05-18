@@ -1,41 +1,32 @@
 ```
-# Compiled and build artifacts
-*.pyc
-*.o
-*.obj
-dist/
-build/
-target/
-
 # Dependencies
-.venv/
-venv/
-node_modules/
-__pycache__/
-.mypy_cache/
-.pytest_cache/
-.gradle/
+.pub/
+.buildlog
+.flutter-plugins
+.flutter-plugin-dependencies
+.packages
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-*.swo
+# Build outputs
+build/
+.dart_tool/
 
 # Environment
 .env
 .env.local
-*.env.*
+.env.*
 
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
+# Logs
+*.log
 
-# System files
+# OS generated files
 .DS_Store
 Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
 
 # Coverage
 coverage/
