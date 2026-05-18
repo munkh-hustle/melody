@@ -18,6 +18,22 @@ venv/
 .env.local
 .env.*
 
+# Build directories
+dist/
+build/
+target/
+
+# Python specific
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage
+coverage/
+htmlcov/
+
 # Logs and temp files
 *.log
 *.tmp
@@ -27,21 +43,17 @@ venv/
 # Editors
 .vscode/
 .idea/
-
-# Build directories
-dist/
-build/
-target/
-.gradle/
-.mypy_cache/
-.pytest_cache/
-coverage/
-htmlcov/
-*.coverage
+*.swp
+*.swo
 
 # System files
 .DS_Store
 Thumbs.db
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+*.pytest_cache
 
 # Compressed files
 *.zip

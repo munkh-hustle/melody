@@ -1399,6 +1399,11 @@ class DisboxService extends ChangeNotifier {
     _isUploading = true;
     _isUploadPaused = false;
     
+    final filename = sanitizeFilename(path.basename(file.path));
+    final filePath = _normalizePath('$folderPath/$filename');
+    final fileSize = file.lengthSync();
+    final mimeType = _detectMimeType(filename);
+
     // Store file info for resume capability
     _currentUploadFilePath = file.path;
     _currentUploadFolderPath = folderPath;
@@ -1407,11 +1412,6 @@ class DisboxService extends ChangeNotifier {
     _totalUploadBytes = fileSize;
     
     notifyListeners();
-
-    final filename = sanitizeFilename(path.basename(file.path));
-    final filePath = _normalizePath('$folderPath/$filename');
-    final fileSize = file.lengthSync();
-    final mimeType = _detectMimeType(filename);
 
     print('Uploading: $filename ($fileSize bytes) to $filePath');
 
