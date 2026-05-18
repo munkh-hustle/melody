@@ -748,6 +748,11 @@ class DisboxService extends ChangeNotifier {
       await _saveFileTree();
       print('[DisboxService] File tree saved (${stopwatch.elapsedMilliseconds}ms)');
 
+      // Add to saved accounts list for easy re-selection (if webhook URL is available)
+      if (_webhookUrl != null && _accountId != null) {
+        await _addAccountToSavedList(_webhookUrl!, _accountId!);
+      }
+
       print('[DisboxService] Successfully imported metadata for: ${disboxFile.name} (total: ${stopwatch.elapsedMilliseconds}ms)');
       notifyListeners();
       return disboxFile;
@@ -863,6 +868,11 @@ class DisboxService extends ChangeNotifier {
       } catch (e) {
         print('[IMPORT ERROR] Failed to import file $fileId: $e');
       }
+    }
+    
+    // Add to saved accounts list for easy re-selection (if webhook URL is available)
+    if (_webhookUrl != null && _accountId != null) {
+      await _addAccountToSavedList(_webhookUrl!, _accountId!);
     }
     
     return successCount;

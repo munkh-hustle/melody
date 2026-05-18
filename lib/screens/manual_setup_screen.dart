@@ -33,10 +33,8 @@ class _ManualSetupScreenState extends State<ManualSetupScreen> {
       await service.setWebhookUrl(webhookUrl);
       
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const FileBrowserScreen()),
-        );
+        // Navigate back to import screen which will show the saved account
+        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
@@ -70,6 +68,11 @@ class _ManualSetupScreenState extends State<ManualSetupScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Manual Setup'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'Back',
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),

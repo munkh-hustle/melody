@@ -139,6 +139,8 @@ class _ImportScreenState extends State<ImportScreen> {
           setState(() {
             _errorMessage = 'Failed to import config. Please check the JSON file format.';
           });
+          // Reload saved accounts in case of partial success
+          await _loadSavedAccounts();
         }
       } else if (mounted) {
         setState(() {
@@ -193,6 +195,8 @@ class _ImportScreenState extends State<ImportScreen> {
             _successMessage = 'Successfully imported $importedCount file(s)!';
             _metadataController.clear();
           });
+          // Reload saved accounts to show newly added webhook
+          await _loadSavedAccounts();
         } else if (mounted) {
           setState(() {
             _errorMessage = 'Failed to import any files. Check the format.';
@@ -206,6 +210,8 @@ class _ImportScreenState extends State<ImportScreen> {
             _successMessage = 'Successfully imported: ${result.name}';
             _metadataController.clear();
           });
+          // Reload saved accounts to show newly added webhook
+          await _loadSavedAccounts();
         } else if (mounted) {
           setState(() {
             _errorMessage = 'Failed to import metadata. Check the format.';
