@@ -1793,6 +1793,10 @@ class DisboxService extends ChangeNotifier {
       notifyListeners();
 
       print('Upload complete: ${p.basename(file.path)} -> $filePath');
+      
+      // Automatically clear cache after successful upload
+      await _cleanupTempFiles();
+      
       return disboxFile;
     } catch (e, stackTrace) {
       print('[METADATA ERROR] Failed to create metadata message: $e');
@@ -1908,6 +1912,9 @@ class DisboxService extends ChangeNotifier {
 
       print(
           'Download complete: $outputPath (${await File(outputPath).length()} bytes)');
+
+      // Automatically clear cache after successful download
+      await _cleanupTempFiles();
 
       return File(outputPath);
     } on DioException catch (e) {

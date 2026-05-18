@@ -1711,31 +1711,34 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       final tempDir = await getTemporaryDirectory();
       final disboxTempDir = Directory('${tempDir.path}/disbox_downloads');
       
-      // Delete downloads directory if it exists
+      // Delete downloads directory completely
       if (await disboxTempDir.exists()) {
         await disboxTempDir.delete(recursive: true);
         print('[ClearCache] Deleted disbox_downloads directory');
       }
       
-      // Also clean any other temp files in cache
-      final cacheDir = Directory(tempDir.path);
-      if (await cacheDir.exists()) {
-        await cacheDir.list().forEach((entity) async {
-          if (entity is File || entity is Directory) {
-            try {
+      // Clean all files in the temp directory (not just specific patterns)
+      if (await tempDir.exists()) {
+        await for (final entity in tempDir.list()) {
+          try {
+            if (entity is File) {
+              await entity.delete();
+              print('[ClearCache] Deleted file: ${entity.path}');
+            } else if (entity is Directory && entity.path != disboxTempDir.path) {
+              // Delete other directories but not disbox_downloads (already deleted above)
               await entity.delete(recursive: true);
-              print('[ClearCache] Deleted: ${entity.path}');
-            } catch (e) {
-              print('[ClearCache WARNING] Could not delete ${entity.path}: $e');
+              print('[ClearCache] Deleted directory: ${entity.path}');
             }
+          } catch (e) {
+            print('[ClearCache WARNING] Could not delete ${entity.path}: $e');
           }
-        });
+        }
       }
       
-      // Recreate the downloads directory
+      // Recreate the downloads directory fresh
       await disboxTempDir.create(recursive: true);
       
-      // Also trigger the service's cleanup method
+      // Also trigger the service's cleanup method for any remaining temp files
       await _disboxService.cleanupTempFiles();
       
       if (mounted) {
