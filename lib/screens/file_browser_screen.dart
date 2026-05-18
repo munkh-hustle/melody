@@ -1329,11 +1329,24 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         'file_tree': fileListJson,
       });
       
-      // Generate filename with webhook name (sanitized), date and time
+      // Generate filename with webhook name (from Discord API), date and time
       final now = DateTime.now();
-      final webhookName = webhookUrl.split('/').last.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       final timestamp = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
-      final fileName = '${webhookName}_$timestamp.json';
+      
+      // Try to fetch the actual webhook name from Discord API
+      String webhookName = 'webhook';
+      try {
+        final fetchedName = await _disboxService.getWebhookName();
+        if (fetchedName != null && fetchedName.isNotEmpty) {
+          webhookName = fetchedName;
+        }
+      } catch (e) {
+        debugPrint('Failed to fetch webhook name, using default: $e');
+      }
+      
+      // Sanitize the webhook name for use in filename
+      final sanitizedWebhookName = webhookName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final fileName = '${sanitizedWebhookName}_$timestamp.json';
       
       // Write JSON data to a temporary file with the correct filename
       final tempDir = await getTemporaryDirectory();
