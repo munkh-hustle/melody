@@ -61,6 +61,68 @@ class DisboxService extends ChangeNotifier {
   /// Stream of download progress (0.0 to 1.0)
   Stream<double> get downloadProgress => _downloadProgressController.stream;
 
+  // Cancel tokens for stopping uploads/downloads
+  CancelToken? _currentUploadCancelToken;
+  CancelToken? _currentDownloadCancelToken;
+
+  // Track current transfer state
+  bool _isUploading = false;
+  bool _isDownloading = false;
+  bool _isUploadPaused = false;
+  bool _isDownloadPaused = false;
+
+  /// Whether an upload is currently in progress
+  bool get isUploading => _isUploading;
+
+  /// Whether a download is currently in progress
+  bool get isDownloading => _isDownloading;
+
+  /// Whether the current upload is paused
+  bool get isUploadPaused => _isUploadPaused;
+
+  /// Whether the current download is paused
+  bool get isDownloadPaused => _isDownloadPaused;
+
+  /// Stop the current upload
+  void stopUpload() {
+    if (_currentUploadCancelToken != null && !_currentUploadCancelToken!.isCancelled) {
+      _currentUploadCancelToken!.cancel('Upload stopped by user');
+      _isUploading = false;
+      _isUploadPaused = false;
+      _uploadProgressController.add(0.0);
+      notifyListeners();
+    }
+  }
+
+  /// Stop the current download
+  void stopDownload() {
+    if (_currentDownloadCancelToken != null && !_currentDownloadCancelToken!.isCancelled) {
+      _currentDownloadCancelToken!.cancel('Download stopped by user');
+      _isDownloading = false;
+      _isDownloadPaused = false;
+      _downloadProgressController.add(0.0);
+      notifyListeners();
+    }
+  }
+
+  /// Pause the current upload (for future resume implementation)
+  void pauseUpload() {
+    if (_isUploading && !_isUploadPaused) {
+      _isUploadPaused = true;
+      stopUpload();
+      notifyListeners();
+    }
+  }
+
+  /// Pause the current download (for future resume implementation)
+  void pauseDownload() {
+    if (_isDownloading && !_isDownloadPaused) {
+      _isDownloadPaused = true;
+      stopDownload();
+      notifyListeners();
+    }
+  }
+
   DisboxService() : _dio = Dio() {
     _dio.options.connectTimeout = const Duration(minutes: 2);
     _dio.options.receiveTimeout = const Duration(minutes: 5);
@@ -1067,8 +1129,12 @@ class DisboxService extends ChangeNotifier {
           'Webhook URL not configured. Please call setWebhookUrl() first.');
     }
 
-    // Reset upload progress stream
+    // Reset upload progress stream and create new cancel token
     _uploadProgressController.add(0.0);
+    _currentUploadCancelToken = CancelToken();
+    _isUploading = true;
+    _isUploadPaused = false;
+    notifyListeners();
 
     final filename = sanitizeFilename(path.basename(file.path));
     final filePath = _normalizePath('$folderPath/$filename');
@@ -1081,84 +1147,124 @@ class DisboxService extends ChangeNotifier {
     final needsChunking = fileSize > DisboxConstants.maxAttachmentSize;
     final chunkMessageIds = <String>[];
 
-    if (needsChunking) {
-      // Upload as chunks
-      final chunks = ChunkUtils.splitFile(file);
-      print('File requires chunking: ${chunks.length} chunks');
+    try {
+      if (needsChunking) {
+        // Upload as chunks
+        final chunks = ChunkUtils.splitFile(file);
+        print('File requires chunking: ${chunks.length} chunks');
 
-      var uploadedBytes = 0;
+        var uploadedBytes = 0;
 
-      for (int i = 0; i < chunks.length; i++) {
-        int retryCount = 0;
-        const maxRetries = 5;
-        bool success = false;
-
-        while (!success && retryCount < maxRetries) {
-          try {
-            final chunkData = await ChunkUtils.readChunk(file, i);
-
-            print(
-                'Uploading chunk ${i + 1}/${chunks.length} (${chunkData.length} bytes)');
-
-            final messageId = await _uploadAttachment(
-              chunkData,
-              filename: '${filename}.part$i',
-              contentType: 'application/octet-stream',
+        for (int i = 0; i < chunks.length; i++) {
+          // Check if upload was cancelled/stopped
+          if (_currentUploadCancelToken!.isCancelled) {
+            print('[UPLOAD STOPPED] Upload cancelled at chunk ${i + 1}/${chunks.length}');
+            throw DioException(
+              requestOptions: RequestOptions(path: ''),
+              type: DioExceptionType.cancel,
+              error: 'Upload stopped by user',
             );
+          }
 
-            chunkMessageIds.add(messageId);
-            uploadedBytes += chunkData.length;
+          int retryCount = 0;
+          const maxRetries = 5;
+          bool success = false;
 
-            // Update progress stream
-            final progress = uploadedBytes / fileSize;
-            _uploadProgressController.add(progress);
+          while (!success && retryCount < maxRetries) {
+            try {
+              final chunkData = await ChunkUtils.readChunk(file, i);
 
-            print(
-                'Chunk ${i + 1}/${chunks.length} uploaded successfully. Message ID: $messageId');
-            onProgress?.call(uploadedBytes, fileSize);
-            success = true;
-          } catch (e, stackTrace) {
-            retryCount++;
-            if (retryCount >= maxRetries) {
               print(
-                  '[UPLOAD ERROR] Failed to upload chunk ${i + 1}/${chunks.length} after $maxRetries retries: $e');
-              print('[UPLOAD ERROR] Stack Trace: $stackTrace');
-              rethrow;
+                  'Uploading chunk ${i + 1}/${chunks.length} (${chunkData.length} bytes)');
+
+              final messageId = await _uploadAttachment(
+                chunkData,
+                filename: '${filename}.part$i',
+                contentType: 'application/octet-stream',
+                cancelToken: _currentUploadCancelToken,
+              );
+
+              chunkMessageIds.add(messageId);
+              uploadedBytes += chunkData.length;
+
+              // Update progress stream
+              final progress = uploadedBytes / fileSize;
+              _uploadProgressController.add(progress);
+
+              print(
+                  'Chunk ${i + 1}/${chunks.length} uploaded successfully. Message ID: $messageId');
+              onProgress?.call(uploadedBytes, fileSize);
+              success = true;
+            } on DioException catch (e) {
+              // Check if this was a cancellation
+              if (e.type == DioExceptionType.cancel) {
+                print('[UPLOAD CANCELLED] Upload cancelled by user');
+                rethrow;
+              }
+              
+              retryCount++;
+              if (retryCount >= maxRetries) {
+                print(
+                    '[UPLOAD ERROR] Failed to upload chunk ${i + 1}/${chunks.length} after $maxRetries retries: $e');
+                print('[UPLOAD ERROR] Stack Trace: ${e.stackTrace}');
+                rethrow;
+              }
+              
+              // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+              final delayMs = (1000 * (1 << (retryCount - 1)));
+              print(
+                  '[UPLOAD] Chunk ${i + 1}/${chunks.length} failed (attempt $retryCount/$maxRetries). Retrying in ${delayMs}ms...');
+              await Future.delayed(Duration(milliseconds: delayMs));
             }
-            
-            // Exponential backoff: 1s, 2s, 4s, 8s, 16s
-            final delayMs = (1000 * (1 << (retryCount - 1)));
-            print(
-                '[UPLOAD] Chunk ${i + 1}/${chunks.length} failed (attempt $retryCount/$maxRetries). Retrying in ${delayMs}ms...');
-            await Future.delayed(Duration(milliseconds: delayMs));
           }
         }
+      } else {
+        // Upload as single file
+        try {
+          final fileBytes = await file.readAsBytes();
+
+          print('Uploading single file ($fileSize bytes)');
+
+          final messageId = await _uploadAttachment(
+            fileBytes,
+            filename: filename,
+            contentType: mimeType,
+            cancelToken: _currentUploadCancelToken,
+          );
+
+          chunkMessageIds.add(messageId);
+
+          // Update progress stream to complete
+          _uploadProgressController.add(1.0);
+
+          print('Single file uploaded successfully. Message ID: $messageId');
+          onProgress?.call(fileSize, fileSize);
+        } on DioException catch (e) {
+          // Check if this was a cancellation
+          if (e.type == DioExceptionType.cancel) {
+            print('[UPLOAD CANCELLED] Upload cancelled by user');
+            rethrow;
+          }
+          
+          print('[UPLOAD ERROR] Failed to upload single file: $e');
+          print('[UPLOAD ERROR] Stack Trace: ${e.stackTrace}');
+          rethrow;
+        }
       }
-    } else {
-      // Upload as single file
-      try {
-        final fileBytes = await file.readAsBytes();
-
-        print('Uploading single file ($fileSize bytes)');
-
-        final messageId = await _uploadAttachment(
-          fileBytes,
-          filename: filename,
-          contentType: mimeType,
-        );
-
-        chunkMessageIds.add(messageId);
-
-        // Update progress stream to complete
-        _uploadProgressController.add(1.0);
-
-        print('Single file uploaded successfully. Message ID: $messageId');
-        onProgress?.call(fileSize, fileSize);
-      } catch (e, stackTrace) {
-        print('[UPLOAD ERROR] Failed to upload single file: $e');
-        print('[UPLOAD ERROR] Stack Trace: $stackTrace');
+    } on DioException catch (e) {
+      // Handle cancellation gracefully
+      if (e.type == DioExceptionType.cancel) {
+        print('[UPLOAD] Upload was stopped/cancelled');
+        _isUploading = false;
+        _isUploadPaused = false;
+        // Don't cleanup chunks on manual stop - user can resume later
         rethrow;
       }
+      rethrow;
+    } finally {
+      _isUploading = false;
+      _isUploadPaused = false;
+      _currentUploadCancelToken = null;
     }
 
     // Create metadata message to store file information
@@ -1257,8 +1363,12 @@ class DisboxService extends ChangeNotifier {
           '[DisboxService WARNING] Download path $outputPath is not in temp directory. Consider using getTemporaryDirectory().');
     }
 
-    // Reset download progress stream
+    // Reset download progress stream and create new cancel token
     _downloadProgressController.add(0.0);
+    _currentDownloadCancelToken = CancelToken();
+    _isDownloading = true;
+    _isDownloadPaused = false;
+    notifyListeners();
 
     print('Downloading: ${file.name} (${file.chunkMessageIds.length} chunks)');
 
@@ -1269,11 +1379,24 @@ class DisboxService extends ChangeNotifier {
     try {
       // Download each chunk
       for (int i = 0; i < file.chunkMessageIds.length; i++) {
+        // Check if download was cancelled/stopped
+        if (_currentDownloadCancelToken!.isCancelled) {
+          print('[DOWNLOAD STOPPED] Download cancelled at chunk ${i + 1}/${file.chunkMessageIds.length}');
+          throw DioException(
+            requestOptions: RequestOptions(path: ''),
+            type: DioExceptionType.cancel,
+            error: 'Download stopped by user',
+          );
+        }
+
         final messageId = file.chunkMessageIds[i];
 
         print('Downloading chunk ${i + 1}/${file.chunkMessageIds.length}');
 
-        final chunkData = await _downloadAttachment(messageId);
+        final chunkData = await _downloadAttachment(
+          messageId,
+          cancelToken: _currentDownloadCancelToken,
+        );
         chunks.add((i, chunkData));
         downloadedBytes += chunkData.length;
 
@@ -1294,6 +1417,26 @@ class DisboxService extends ChangeNotifier {
           'Download complete: $outputPath (${await File(outputPath).length()} bytes)');
 
       return File(outputPath);
+    } on DioException catch (e) {
+      // Handle cancellation gracefully
+      if (e.type == DioExceptionType.cancel) {
+        print('[DOWNLOAD] Download was stopped/cancelled');
+        _isDownloading = false;
+        _isDownloadPaused = false;
+        // Cleanup partial download on cancel
+        try {
+          final outFile = File(outputPath);
+          if (await outFile.exists()) {
+            await outFile.delete();
+            print('[DOWNLOAD CLEANUP] Deleted partial download: $outputPath');
+          }
+        } catch (cleanupError) {
+          print(
+              '[DOWNLOAD CLEANUP ERROR] Failed to delete partial file: $cleanupError');
+        }
+        rethrow;
+      }
+      rethrow;
     } catch (e, stackTrace) {
       print('[DOWNLOAD ERROR] Failed to download file: $e');
       print('[DOWNLOAD ERROR] Stack Trace: $stackTrace');
@@ -1309,6 +1452,10 @@ class DisboxService extends ChangeNotifier {
             '[DOWNLOAD CLEANUP ERROR] Failed to delete partial file: $cleanupError');
       }
       rethrow;
+    } finally {
+      _isDownloading = false;
+      _isDownloadPaused = false;
+      _currentDownloadCancelToken = null;
     }
   }
 
@@ -1712,6 +1859,7 @@ class DisboxService extends ChangeNotifier {
     Uint8List data, {
     required String filename,
     required String contentType,
+    CancelToken? cancelToken,
   }) async {
     final apiUrl = _getWebhookApiUrl();
 
@@ -1735,6 +1883,7 @@ class DisboxService extends ChangeNotifier {
         apiUrl,
         data: formData,
         queryParameters: {'wait': 'true'},
+        cancelToken: cancelToken,
       );
 
       print('[UPLOAD ATTACHMENT] Response status: ${response.statusCode}');
@@ -1759,12 +1908,13 @@ class DisboxService extends ChangeNotifier {
   }
 
   /// Download an attachment from a Discord message.
-  Future<Uint8List> _downloadAttachment(String messageId) async {
+  Future<Uint8List> _downloadAttachment(String messageId, {CancelToken? cancelToken}) async {
     final apiUrl = _getWebhookApiUrl();
 
     // Fetch the message to get attachment URL
     final response = await _dio.get(
       '$apiUrl/messages/$messageId',
+      cancelToken: cancelToken,
     );
 
     if (response.statusCode != 200) {
@@ -1784,6 +1934,7 @@ class DisboxService extends ChangeNotifier {
     final fileResponse = await _dio.get(
       attachmentUrl,
       options: Options(responseType: ResponseType.bytes),
+      cancelToken: cancelToken,
     );
 
     return fileResponse.data as Uint8List;

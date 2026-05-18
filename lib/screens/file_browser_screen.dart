@@ -7,6 +7,7 @@ import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:dio/dio.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
@@ -252,12 +253,23 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         ),
       );
       
-      // Show progress dialog with stream
+      // Show progress dialog with stream and stop button
       final progressDialog = ProgressDialog(
         title: 'Uploading $fileName',
         message: '${fileSizeMB.toStringAsFixed(1)} MB - Please wait...',
         initialProgress: 0.0,
         progressStream: _disboxService.uploadProgress,
+        onStop: () {
+          _disboxService.stopUpload();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Upload stopped'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        },
+        isPaused: false,
+        allowResume: false, // Resume not yet implemented
       );
       
       showDialog(
@@ -330,6 +342,35 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         );
         
         _loadFiles(); // Refresh file list
+      } on DioException catch (e) {
+        // Handle cancellation gracefully
+        if (e.type == DioExceptionType.cancel) {
+          debugPrint('Upload was cancelled by user');
+          if (mounted) Navigator.pop(context); // Close progress dialog
+          
+          // Cancel upload progress notification
+          if (_uploadNotificationId != null && _notificationService != null) {
+            try {
+              await _notificationService!.cancelNotification(_uploadNotificationId!);
+            } catch (e) {
+              debugPrint('Failed to cancel upload notification: $e');
+            }
+            _uploadNotificationId = null;
+          }
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Upload stopped'),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
+        
+        // Re-throw other errors
+        rethrow;
       } catch (e) {
         if (mounted) Navigator.pop(context); // Close progress dialog
         
@@ -447,12 +488,23 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       ),
     );
     
-    // Show progress dialog with stream
+    // Show progress dialog with stream and stop button
     final progressDialog = ProgressDialog(
       title: 'Downloading $fileName',
       message: 'Preparing download...',
       initialProgress: 0.0,
       progressStream: _disboxService.downloadProgress,
+      onStop: () {
+        _disboxService.stopDownload();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Download stopped'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      },
+      isPaused: false,
+      allowResume: false, // Resume not yet implemented
     );
     
     showDialog(
