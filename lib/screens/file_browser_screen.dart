@@ -1329,11 +1329,17 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         'file_tree': fileListJson,
       });
       
+      // Generate filename with webhook name (sanitized), date and time
+      final now = DateTime.now();
+      final webhookName = webhookUrl.split('/').last.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final timestamp = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+      final fileName = '${webhookName}_$timestamp.json';
+      
       // Share the JSON data with proper UTF-8 encoding for international characters
       final result = await Share.shareXFiles(
         [XFile.fromData(
           Uint8List.fromList(utf8.encode(jsonData)),
-          name: 'disbox_config.json',
+          name: fileName,
           mimeType: 'application/json',
         )],
         subject: 'Disbox Configuration',
