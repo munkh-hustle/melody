@@ -946,6 +946,28 @@ class DisboxService extends ChangeNotifier {
     return '${DisboxConstants.discordApiBase}/${creds.id}/${creds.token}';
   }
 
+  /// Fetch webhook information from Discord API to get the webhook name
+  Future<String?> getWebhookName() async {
+    if (_webhookUrl == null) {
+      return null;
+    }
+
+    try {
+      // Discord webhook URL format: https://discord.com/api/webhooks/{id}/{token}
+      // We need to use the full webhook URL (with token) to authenticate the request
+      final response = await _dio.get(_webhookUrl!);
+      
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = response.data as Map;
+        return data['name'] as String?;
+      }
+    } catch (e) {
+      print('[DisboxService] Failed to fetch webhook name: $e');
+    }
+    
+    return null;
+  }
+
   // ==================== LOCAL STORAGE METHODS ====================
 
   /// Load file tree from local Hive storage.
