@@ -954,17 +954,8 @@ class DisboxService extends ChangeNotifier {
 
     try {
       // Discord webhook URL format: https://discord.com/api/webhooks/{id}/{token}
-      // To get webhook info, we can GET the webhook URL without the token
-      final creds = _parseWebhookUrl(_webhookUrl!);
-      if (creds == null) {
-        return null;
-      }
-
-      // Use the webhook URL with just the ID (no token) to get public webhook info
-      // discordApiBase is already "https://discord.com/api/webhooks", so just append the ID
-      final webhookInfoUrl = '${DisboxConstants.discordApiBase}/${creds.id}';
-      
-      final response = await _dio.get(webhookInfoUrl);
+      // We need to use the full webhook URL (with token) to authenticate the request
+      final response = await _dio.get(_webhookUrl!);
       
       if (response.statusCode == 200 && response.data is Map) {
         final data = response.data as Map;
