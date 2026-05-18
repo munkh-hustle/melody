@@ -322,13 +322,13 @@ class _ImportScreenState extends State<ImportScreen> {
       appBar: AppBar(
         title: const Text('Import Configuration'),
         leading: IconButton(
-          icon: const Icon(Icons.help_outline),
-          onPressed: _showHelpDialog,
-          tooltip: 'First time? Get help here',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'Back',
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.info_outline),
+            icon: const Icon(Icons.help_outline),
             onPressed: _showHelpDialog,
             tooltip: 'Help',
           ),

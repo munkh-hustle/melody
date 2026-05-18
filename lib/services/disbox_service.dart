@@ -883,10 +883,19 @@ class DisboxService extends ChangeNotifier {
     for (final jsonStr in accountsJson) {
       try {
         final Map<String, dynamic> data = jsonDecode(jsonStr);
+        // Use stored label if available, otherwise generate from webhook URL
+        String? storedLabel = data['label'] as String?;
+        String label;
+        if (storedLabel != null && storedLabel.isNotEmpty) {
+          label = storedLabel;
+        } else {
+          // Generate label asynchronously for backward compatibility
+          label = await _generateAccountLabel(data['webhook_url'] as String);
+        }
         accounts.add({
           'webhook_url': data['webhook_url'] as String,
           'account_id': data['account_id'] as String,
-          'label': data['label'] as String? ?? _generateAccountLabel(data['webhook_url'] as String),
+          'label': label,
         });
       } catch (e) {
         print('[DisboxService] Error parsing saved account: $e');
@@ -912,11 +921,14 @@ class DisboxService extends ChangeNotifier {
       }
     }).toList();
     
+    // Generate label asynchronously
+    final label = await _generateAccountLabel(webhookUrl);
+    
     // Add to end (most recent)
     updatedList.add(jsonEncode({
       'webhook_url': webhookUrl,
       'account_id': accountId,
-      'label': _generateAccountLabel(webhookUrl),
+      'label': label,
     }));
     
     // Keep only last 10 accounts to avoid clutter
@@ -929,7 +941,22 @@ class DisboxService extends ChangeNotifier {
   }
 
   /// Generate a human-readable label for an account based on webhook URL
-  String _generateAccountLabel(String webhookUrl) {
+  Future<String> _generateAccountLabel(String webhookUrl) async {
+    try {
+      // Try to fetch webhook name from Discord API
+      final response = await _dio.get(webhookUrl);
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = response.data as Map<String, dynamic>;
+        final name = data['name'] as String?;
+        if (name != null && name.isNotEmpty) {
+          return name;
+        }
+      }
+    } catch (e) {
+      print('[DisboxService] Failed to fetch webhook name: $e');
+      // Fallback to extracting webhook ID
+    }
+    
     try {
       final uri = Uri.parse(webhookUrl);
       // Extract webhook ID as a short identifier
