@@ -1335,16 +1335,24 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       final timestamp = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
       final fileName = '${webhookName}_$timestamp.json';
       
-      // Share the JSON data with proper UTF-8 encoding for international characters
+      // Write JSON data to a temporary file with the correct filename
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/$fileName');
+      await tempFile.writeAsString(jsonData, encoding: utf8);
+      
+      // Share the file with proper filename
       final result = await Share.shareXFiles(
-        [XFile.fromData(
-          Uint8List.fromList(utf8.encode(jsonData)),
-          name: fileName,
-          mimeType: 'application/json',
-        )],
+        [XFile(tempFile.path, mimeType: 'application/json')],
         subject: 'Disbox Configuration',
         text: 'Disbox configuration file with file tree. Import this on your other device to sync your Disbox storage.',
       );
+      
+      // Clean up temporary file after sharing
+      try {
+        await tempFile.delete();
+      } catch (e) {
+        debugPrint('Failed to delete temporary file: $e');
+      }
       
       if (result.status == ShareResultStatus.success) {
         ScaffoldMessenger.of(context).showSnackBar(
