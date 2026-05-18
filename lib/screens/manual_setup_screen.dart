@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/disbox_service.dart';
 import 'file_browser_screen.dart';
+import 'import_screen.dart';
 
 class ManualSetupScreen extends StatefulWidget {
   const ManualSetupScreen({super.key});
@@ -33,8 +34,11 @@ class _ManualSetupScreenState extends State<ManualSetupScreen> {
       await service.setWebhookUrl(webhookUrl);
       
       if (mounted) {
-        // Navigate back to import screen which will show the saved account
-        Navigator.pop(context);
+        // Navigate to file browser screen after successful setup
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const FileBrowserScreen()),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -70,7 +74,10 @@ class _ManualSetupScreenState extends State<ManualSetupScreen> {
         title: const Text('Manual Setup'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const ImportScreen()),
+          ),
           tooltip: 'Back',
         ),
       ),

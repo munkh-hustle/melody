@@ -19,6 +19,7 @@ import '../models/disbox_file.dart';
 import '../widgets/file_list_tile.dart';
 import '../widgets/progress_dialog.dart';
 import '../services/notification_service.dart';
+import 'import_screen.dart';
 
 /// Main file browser screen for Disbox.
 /// 
@@ -1810,6 +1811,16 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_currentPath == '/' ? 'Disbox' : _currentPath),
+        leading: IconButton(
+          icon: const Icon(Icons.swap_horiz),
+          onPressed: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const ImportScreen()),
+            );
+          },
+          tooltip: 'Switch Account',
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.import_export),

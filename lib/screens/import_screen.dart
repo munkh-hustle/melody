@@ -327,11 +327,6 @@ class _ImportScreenState extends State<ImportScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Import Configuration'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-          tooltip: 'Back',
-        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline),
@@ -528,13 +523,13 @@ class _ImportScreenState extends State<ImportScreen> {
                     const SizedBox(height: 16),
                     TextButton.icon(
                       onPressed: () {
-                        Navigator.push(
+                        Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(builder: (_) => const ManualSetupScreen()),
                         );
                       },
                       icon: const Icon(Icons.edit),
-                      label: const Text('Manual Setup (First Time Users)'),
+                      label: const Text('Manual Setup (Enter Webhook URL)'),
                     ),
                     const SizedBox(height: 24),
                   ],
