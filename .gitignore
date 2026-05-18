@@ -1,32 +1,48 @@
-```
-# Dart/Flutter specific ignores
-.dart_tool/
-.packages
-.pub-cache/
-pubspec.lock
-
-# Build outputs
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+*.class
+*.exe
+*.dll
+*.so
+*.a
+*.out
+dist/
 build/
-*.apk
-*.aab
-*.ipa
-*.app
+target/
 
-# IDE files
-.idea/
-.vscode/
+# Dependencies
+node_modules/
+venv/
+.venv/
+.env
+.env.local
+.env.*
+
+# Logs and temp files
+*.log
+*.tmp
 *.swp
 *.swo
 
-# Logs
-*.log
-*.tmp
+# Editors
+.vscode/
+.idea/
 
-# Environment
-.env
-.env.local
-*.env.*
+# System files
+.DS_Store
+Thumbs.db
 
-# Dependencies cache
-.dart_tool/package_config.json
-```
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Python specific
+.mypy_cache/
+.pytest_cache/
+
+# Gradle
+.gradle/

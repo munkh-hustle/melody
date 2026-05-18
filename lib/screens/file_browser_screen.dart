@@ -399,7 +399,6 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         // Handle cancellation gracefully
         if (e.type == DioExceptionType.cancel) {
           debugPrint('Upload was cancelled by user');
-          if (mounted) Navigator.pop(context); // Close progress dialog
           
           // Cancel upload progress notification
           if (_uploadNotificationId != null && _notificationService != null) {
@@ -411,12 +410,25 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
             _uploadNotificationId = null;
           }
           
+          // Close progress dialog only if it's still showing
+          if (mounted && Navigator.canPop(context)) {
+            Navigator.pop(context);
+          }
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Upload stopped'),
+              content: const Text('Upload stopped - Tap upload again to resume'),
               backgroundColor: Colors.orange,
               duration: const Duration(seconds: 3),
               behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(
+                label: 'Resume',
+                textColor: Colors.white,
+                onPressed: () {
+                  // Re-trigger upload which will resume from last chunk
+                  _uploadFile(file);
+                },
+              ),
             ),
           );
           return;
@@ -425,7 +437,10 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
         // Re-throw other errors
         rethrow;
       } catch (e) {
-        if (mounted) Navigator.pop(context); // Close progress dialog
+        // Close progress dialog only if it's still showing
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
         
         // Cancel the subscription on error
         // Note: uploadSubscription is already cancelled above, but we ensure cleanup here too
@@ -693,8 +708,52 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       
       // Complete the download process (save file, show success message)
       await _completeDownload(file, tempPath!, fileName);
+    } on DioException catch (e) {
+      // Handle cancellation gracefully
+      if (e.type == DioExceptionType.cancel) {
+        debugPrint('Download was cancelled by user');
+        
+        // Cancel download progress notification
+        if (_downloadNotificationId != null && _notificationService != null) {
+          try {
+            await _notificationService!.cancelNotification(_downloadNotificationId!);
+          } catch (e) {
+            debugPrint('Failed to cancel download notification: $e');
+          }
+          _downloadNotificationId = null;
+        }
+        
+        // Close progress dialog only if it's still showing
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Download stopped - Tap download again to resume'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'Resume',
+              textColor: Colors.white,
+              onPressed: () {
+                // Re-trigger download which will resume from last chunk
+                _downloadFile(file);
+              },
+            ),
+          ),
+        );
+        return;
+      }
+      
+      // Re-throw other errors
+      rethrow;
     } catch (e) {
-      if (mounted) Navigator.pop(context); // Close progress dialog
+      // Close progress dialog only if it's still showing
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
       
       // Cancel the subscription on error
       await downloadSubscription?.cancel();
