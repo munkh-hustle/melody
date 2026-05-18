@@ -1358,7 +1358,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       final result = await Share.shareXFiles(
         [XFile(tempFile.path, mimeType: 'application/json')],
         subject: 'Disbox Configuration',
-        text: '⭐⭐⭐',
+        text: ':)',
       );
       
       // Clean up temporary file after sharing
