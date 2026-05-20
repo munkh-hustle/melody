@@ -2362,22 +2362,13 @@ class DisboxService extends ChangeNotifier {
     print('Moving: ${file.path} -> $newPath');
     print('NOTE: Only updating local file tree (UI). Chunk message IDs remain unchanged for downloads.');
 
-    // Remove from old location in file tree FIRST
-    await _removeFileFromFileTree(file.path, isFolder: file.isFolder);
-
-    // Add to new location in file tree
     if (file.isFolder) {
       // For folders, we need to update all children paths in the local tree only
       await _moveFolderInFileTreeLocalOnly(file.path, newPath);
     } else {
-      await _addFileToFileTree(
-        id: file.id,
-        name: file.name,
-        path: newPath,
-        size: file.size ?? 0,
-        mimeType: file.mimeType ?? 'application/octet-stream',
-        chunkMessageIds: file.chunkMessageIds,
-      );
+      // For files: remove from old location and add to new location
+      // We need to do this without saving in between to avoid losing the file
+      await _moveFileInFileTreeLocalOnly(file.path, newPath, file);
     }
 
     // Update cached object with new path (chunkMessageIds stay the same!)
@@ -2398,6 +2389,138 @@ class DisboxService extends ChangeNotifier {
 
     notifyListeners();
     return updatedFile;
+  }
+
+  /// Move a file in the file tree (LOCAL ONLY - no webhook updates).
+  /// This removes from old location and adds to new location in a single operation.
+  Future<void> _moveFileInFileTreeLocalOnly(String oldPath, String newPath, DisboxFile file) async {
+    if (_fileTree == null) {
+      print('File tree not initialized');
+      return;
+    }
+
+    print('[DisboxService DEBUG] Moving file in tree: $oldPath -> $newPath');
+    
+    // First, collect the file node data from the old location
+    Map<String, dynamic>? fileNodeData;
+    final oldParts = oldPath.split('/').where((p) => p.isNotEmpty).toList();
+    
+    // Navigate to parent folder of old location
+    Map<String, dynamic>? currentFolder = _fileTree;
+    for (int i = 0; i < oldParts.length - 1; i++) {
+      final folderName = oldParts[i];
+      var childrenRaw = currentFolder!['children'];
+      Map<String, dynamic>? children;
+      
+      if (childrenRaw != null) {
+        if (childrenRaw is Map<String, dynamic>) {
+          children = childrenRaw;
+        } else if (childrenRaw is Map) {
+          children = <String, dynamic>{};
+          childrenRaw.forEach((key, value) {
+            children![key.toString()] = value;
+          });
+          currentFolder!['children'] = children;
+        }
+      }
+
+      if (children != null && children.containsKey(folderName)) {
+        currentFolder = children[folderName] as Map<String, dynamic>?;
+      } else {
+        print('[DisboxService ERROR] Old parent folder not found: $folderName');
+        return;
+      }
+    }
+    
+    // Get the file node from old location
+    final oldFileName = oldParts.last;
+    var oldChildrenRaw = currentFolder!['children'];
+    Map<String, dynamic>? oldChildren;
+    
+    if (oldChildrenRaw != null) {
+      if (oldChildrenRaw is Map<String, dynamic>) {
+        oldChildren = oldChildrenRaw;
+      } else if (oldChildrenRaw is Map) {
+        oldChildren = <String, dynamic>{};
+        oldChildrenRaw.forEach((key, value) {
+          oldChildren![key.toString()] = value;
+        });
+        currentFolder!['children'] = oldChildren;
+      }
+    }
+    
+    if (oldChildren != null && oldChildren.containsKey(oldFileName)) {
+      // Save the file node data before removing
+      fileNodeData = Map<String, dynamic>.from(oldChildren[oldFileName] as Map<String, dynamic>);
+      // Remove from old location
+      oldChildren.remove(oldFileName);
+      print('[DisboxService DEBUG] Removed file from old location: $oldFileName');
+    } else {
+      print('[DisboxService ERROR] File not found at old location: $oldFileName');
+      return;
+    }
+    
+    if (fileNodeData == null) {
+      print('[DisboxService ERROR] Failed to get file node data');
+      return;
+    }
+    
+    // Now navigate to new parent folder
+    final newParts = newPath.split('/').where((p) => p.isNotEmpty).toList();
+    currentFolder = _fileTree;
+    
+    for (int i = 0; i < newParts.length - 1; i++) {
+      final folderName = newParts[i];
+      var childrenRaw = currentFolder!['children'];
+      Map<String, dynamic>? children;
+      
+      if (childrenRaw != null) {
+        if (childrenRaw is Map<String, dynamic>) {
+          children = childrenRaw;
+        } else if (childrenRaw is Map) {
+          children = <String, dynamic>{};
+          childrenRaw.forEach((key, value) {
+            children![key.toString()] = value;
+          });
+          currentFolder!['children'] = children;
+        }
+      }
+
+      if (children != null && children.containsKey(folderName)) {
+        currentFolder = children[folderName] as Map<String, dynamic>?;
+      } else {
+        print('[DisboxService ERROR] New parent folder not found: $folderName');
+        return;
+      }
+    }
+    
+    // Add to new location
+    final newFileName = newParts.last;
+    var newChildrenRaw = currentFolder!['children'];
+    Map<String, dynamic> newChildrenMap;
+    
+    if (newChildrenRaw == null) {
+      newChildrenMap = <String, dynamic>{};
+      currentFolder!['children'] = newChildrenMap;
+    } else if (newChildrenRaw is Map<String, dynamic>) {
+      newChildrenMap = newChildrenRaw;
+    } else {
+      newChildrenMap = <String, dynamic>{};
+      if (newChildrenRaw is Map) {
+        newChildrenRaw.forEach((key, value) {
+          newChildrenMap[key.toString()] = value;
+        });
+      }
+      currentFolder!['children'] = newChildrenMap;
+    }
+    
+    // Update the path in the file node
+    fileNodeData['path'] = newPath;
+    newChildrenMap[newFileName] = fileNodeData;
+    print('[DisboxService DEBUG] Added file to new location: $newFileName');
+    
+    // Save file tree to local storage once
+    await _saveFileTree();
   }
 
   /// Move a folder and all its children in the file tree (LOCAL ONLY - no webhook updates).
