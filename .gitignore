@@ -9,15 +9,38 @@ __pycache__/
 *.so
 *.a
 *.out
-*.pyd
-*.dylib
-*.jar
-*.war
-*.zip
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+.env
+.env.local
+.env.*
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Editors
+.vscode/
+.idea/
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Distribution / packaging
+dist/
+build/
 *.tar.gz
-*.tar.bz2
-*.tar.xz
+*.zip
 *.gz
+*.tar
+*.tgz
 *.bz2
 *.xz
 *.7z
@@ -33,41 +56,28 @@ __pycache__/
 *.lz
 *.lzo
 
-# Dependencies
-node_modules/
-venv/
-.venv/
-.env
-.env.local
-.env.*
-target/
-.gradle/
+# Testing
 .mypy_cache/
 .pytest_cache/
-.coverage
-coverage/
-htmlcov/
-.julia/
-zig-cache/
-build/
+target/
+.gradle/
 
-# Editors and IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-*.log
+# System files
 .DS_Store
 Thumbs.db
 
-# Dart/Flutter specific
+# Dart specific
 .dart_tool/
-.packages
 .pub/
 build/
 *.g.dart
 *.freezed.dart
+
+# Flutter specific
+**/ios/.generated/
+**/android/.generated/
+flutter/ephemeral
+flutter/bin/cache
 
 # Original rules preserved
 *.log

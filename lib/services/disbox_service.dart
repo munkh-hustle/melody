@@ -2309,12 +2309,10 @@ class DisboxService extends ChangeNotifier {
     final newPath = _normalizePath('$parentPath/$newName');
 
     print('Renaming: ${file.name} -> $newName');
+    print('NOTE: Only updating local file tree (UI). Chunk message IDs remain unchanged for downloads.');
 
-    // Update metadata message
-    await _updateMetadataMessage(file.id, {
-      'name': newName,
-      'path': newPath,
-    });
+    // Update local file tree only - no webhook API calls
+    await _renameFileInFileTreeLocalOnly(file, newName, newPath);
 
     // Update cached object
     final updatedFile = DisboxFile(
@@ -2333,6 +2331,70 @@ class DisboxService extends ChangeNotifier {
     _fileCache[updatedFile.id] = updatedFile;
 
     return updatedFile;
+  }
+
+  /// Rename a file or folder in the local file tree only.
+  /// Does NOT make any webhook API calls - only updates UI/metadata.
+  Future<void> _renameFileInFileTreeLocalOnly(DisboxFile file, String newName, String newPath) async {
+    print('[DisboxService DEBUG] _renameFileInFileTreeLocalOnly: ${file.path} -> $newPath');
+    
+    if (_fileTree == null) {
+      throw StateError('File tree not loaded');
+    }
+
+    // Update the file/folder name and path in the tree
+    final parentPath = _getParentPath(file.path);
+    final folder = _getFolderFromTree(parentPath);
+    
+    if (folder != null && folder.containsKey('children')) {
+      final children = folder['children'] as Map<String, dynamic>;
+      
+      // Remove old entry
+      if (children.containsKey(file.name)) {
+        final oldEntry = children[file.name];
+        children.remove(file.name);
+        
+        // Add with new name
+        if (oldEntry is Map<String, dynamic>) {
+          oldEntry['name'] = newName;
+          oldEntry['path'] = newPath;
+          
+          // If it's a folder, update all children paths recursively
+          if (oldEntry['isFolder'] == true) {
+            _updateChildrenPaths(oldEntry, newPath);
+          }
+          
+          children[newName] = oldEntry;
+        }
+      }
+    }
+
+    // Save the updated file tree
+    await _saveFileTree();
+    
+    print('[DisboxService DEBUG] Rename completed in local file tree');
+  }
+
+  /// Recursively update paths for all children of a folder
+  void _updateChildrenPaths(Map<String, dynamic> folder, String newParentPath) {
+    if (folder.containsKey('children')) {
+      final children = folder['children'] as Map<String, dynamic>;
+      for (final entry in children.entries) {
+        if (entry.value is Map<String, dynamic>) {
+          final child = entry.value as Map<String, dynamic>;
+          final oldPath = child['path'] as String;
+          final childName = child['name'] as String;
+          final newChildPath = _normalizePath('$newParentPath/$childName');
+          
+          child['path'] = newChildPath;
+          
+          // Recursively update if it's a folder
+          if (child['isFolder'] == true) {
+            _updateChildrenPaths(child, newChildPath);
+          }
+        }
+      }
+    }
   }
 
   /// Move a file or folder to a different folder path.
