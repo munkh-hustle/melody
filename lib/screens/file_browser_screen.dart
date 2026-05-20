@@ -1174,6 +1174,15 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
                 },
               ),
             ListTile(
+              leading: const Icon(Icons.folder_move),
+              title: const Text('Move'),
+              onTap: () {
+                print('[DEBUG] Move tapped');
+                Navigator.pop(context);
+                _moveFile(file);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.edit),
               title: const Text('Rename'),
               onTap: () {
@@ -1248,6 +1257,107 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Rename failed: $e')),
       );
+    }
+  }
+
+  /// Move a file or folder to another folder
+  Future<void> _moveFile(DisboxFile file) async {
+    // Get all available folders for destination selection
+    final allFolders = await _getAllFolders();
+    
+    // Add root as an option
+    final folderOptions = ['/'] + allFolders.where((f) => f != '/').toList();
+    
+    String? selectedFolder;
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Move to Folder'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Select destination folder for "${file.name}":'),
+              const SizedBox(height: 16),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: folderOptions.length,
+                  itemBuilder: (context, index) {
+                    final folder = folderOptions[index];
+                    final isSelected = selectedFolder == folder;
+                    return ListTile(
+                      leading: Icon(Icons.folder, 
+                        color: isSelected ? Theme.of(context).primaryColor : null),
+                      title: Text(folder == '/' ? 'Root (/)' : folder),
+                      selected: isSelected,
+                      onTap: () {
+                        setDialogState(() {
+                          selectedFolder = folder;
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: selectedFolder != null 
+                ? () => Navigator.pop(context, true) 
+                : null,
+              child: const Text('Move'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || selectedFolder == null) return;
+
+    try {
+      await _disboxService.moveFile(file, selectedFolder);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Moved successfully')),
+      );
+      
+      _loadFiles(); // Refresh file list
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Move failed: $e')),
+      );
+    }
+  }
+
+  /// Get all folder paths from the file tree
+  Future<List<String>> _getAllFolders() async {
+    final folders = <String>['/'];
+    await _collectFolders(_currentPath, folders);
+    return folders..sort();
+  }
+
+  /// Recursively collect all folder paths
+  Future<void> _collectFolders(String path, List<String> folders) async {
+    try {
+      final files = await _disboxService.listFiles(folderPath: path);
+      for (final file in files) {
+        if (file.isFolder) {
+          folders.add(file.path);
+          // Recurse into subfolders
+          await _collectFolders(file.path, folders);
+        }
+      }
+    } catch (e) {
+      print('[ERROR] Failed to collect folders: $e');
     }
   }
 

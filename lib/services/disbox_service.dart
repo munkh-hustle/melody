@@ -2335,6 +2335,187 @@ class DisboxService extends ChangeNotifier {
     return updatedFile;
   }
 
+  /// Move a file or folder to a different folder path.
+  /// 
+  /// This operation only updates the metadata path - no actual files are moved
+  /// between webhooks/folders. The chunk message IDs remain unchanged, so
+  /// downloads will continue to work correctly.
+  /// 
+  /// [file] - The file or folder to move
+  /// [destinationFolderPath] - The destination folder path (e.g., '/folder1/subfolder')
+  /// 
+  /// Returns the updated [DisboxFile] with the new path.
+  Future<DisboxFile> moveFile(DisboxFile file, String destinationFolderPath) async {
+    if (!isConfigured) {
+      print(
+          '[DisboxService ERROR] moveFile called but webhook not configured');
+      throw StateError(
+          'Webhook URL not configured. Please call setWebhookUrl() first.');
+    }
+
+    // Normalize destination folder path
+    final normalizedDestPath = _normalizePath(destinationFolderPath);
+    
+    // Calculate new full path for the file
+    final newPath = _normalizePath('$normalizedDestPath/${file.name}');
+
+    print('Moving: ${file.path} -> $newPath');
+
+    // Update metadata message with new path
+    await _updateMetadataMessage(file.id, {
+      'path': newPath,
+    });
+
+    // Remove from old location in file tree
+    await _removeFileFromFileTree(file.path, isFolder: file.isFolder);
+
+    // Add to new location in file tree
+    if (file.isFolder) {
+      // For folders, we need to update all children paths as well
+      await _moveFolderInFileTree(file.path, newPath);
+    } else {
+      await _addFileToFileTree(
+        id: file.id,
+        name: file.name,
+        path: newPath,
+        size: file.size ?? 0,
+        mimeType: file.mimeType ?? 'application/octet-stream',
+        chunkMessageIds: file.chunkMessageIds,
+      );
+    }
+
+    // Update cached object with new path
+    final updatedFile = DisboxFile(
+      id: file.id,
+      name: file.name,
+      path: newPath,
+      isFolder: file.isFolder,
+      size: file.size,
+      mimeType: file.mimeType,
+      chunkMessageIds: file.chunkMessageIds,
+      createdAt: file.createdAt,
+      modifiedAt: DateTime.now(),
+      parentId: _getParentFolderId(normalizedDestPath),
+    );
+
+    _fileCache[updatedFile.id] = updatedFile;
+
+    notifyListeners();
+    return updatedFile;
+  }
+
+  /// Move a folder and all its children in the file tree.
+  Future<void> _moveFolderInFileTree(String oldPath, String newPath) async {
+    if (_fileTree == null) {
+      print('File tree not initialized');
+      return;
+    }
+
+    // Get all files/folders under this folder and update their paths
+    final itemsToMove = <Map<String, dynamic>>[];
+    _collectItemsUnderPath(oldPath, itemsToMove);
+
+    for (final item in itemsToMove) {
+      final oldItemPath = item['path'] as String;
+      final newItemPath = newPath + oldItemPath.substring(oldPath.length);
+      
+      // Update the path in the item
+      item['path'] = newItemPath;
+      
+      // If it's a file, update its metadata message
+      if (item['isFolder'] == false) {
+        final messageId = item['id'] as String;
+        try {
+          await _updateMetadataMessage(messageId, {
+            'path': newItemPath,
+          });
+        } catch (e) {
+          print('[MOVE FOLDER ERROR] Failed to update metadata for $oldItemPath: $e');
+        }
+      }
+    }
+
+    // Save updated file tree
+    await _saveFileTree();
+  }
+
+  /// Recursively collect all items under a given path.
+  void _collectItemsUnderPath(String folderPath, List<Map<String, dynamic>> items) {
+    if (_fileTree == null) return;
+
+    final parts = folderPath.split('/').where((p) => p.isNotEmpty).toList();
+    Map<String, dynamic>? currentFolder = _fileTree;
+
+    // Navigate to the folder
+    for (final folderName in parts) {
+      var childrenRaw = currentFolder!['children'];
+      Map<String, dynamic>? children;
+      
+      if (childrenRaw != null) {
+        if (childrenRaw is Map<String, dynamic>) {
+          children = childrenRaw;
+        } else if (childrenRaw is Map) {
+          children = <String, dynamic>{};
+          childrenRaw.forEach((key, value) {
+            children![key.toString()] = value;
+          });
+        }
+      }
+
+      if (children != null && children.containsKey(folderName)) {
+        currentFolder = children[folderName] as Map<String, dynamic>?;
+      } else {
+        return; // Folder not found
+      }
+    }
+
+    // Collect all items under this folder
+    _collectAllItems(currentFolder, items, folderPath);
+  }
+
+  /// Recursively collect all items from a folder node.
+  void _collectAllItems(Map<String, dynamic>? folderNode, List<Map<String, dynamic>> items, String basePath) {
+    if (folderNode == null) return;
+
+    final childrenRaw = folderNode['children'];
+    if (childrenRaw == null) return;
+
+    Map<String, dynamic> children;
+    if (childrenRaw is Map<String, dynamic>) {
+      children = childrenRaw;
+    } else if (childrenRaw is Map) {
+      children = <String, dynamic>{};
+      childrenRaw.forEach((key, value) {
+        children[key.toString()] = value;
+      });
+    } else {
+      return;
+    }
+
+    children.forEach((name, childNode) {
+      if (childNode is! Map<String, dynamic>) return;
+
+      final itemType = childNode['type'] as String?;
+      final itemPath = '$basePath/$name';
+
+      if (itemType == 'file') {
+        // Convert file node to item map
+        items.add({
+          'id': childNode['id'] as String,
+          'name': name,
+          'path': itemPath,
+          'isFolder': false,
+          'size': childNode['size'] as int? ?? 0,
+          'mimeType': childNode['mimeType'] as String? ?? 'application/octet-stream',
+          'chunkMessageIds': (childNode['chunk_message_ids'] as List?)?.cast<String>() ?? [],
+        });
+      } else if (itemType == 'folder' || childNode.containsKey('children')) {
+        // It's a folder, recurse
+        _collectAllItems(childNode, items, itemPath);
+      }
+    });
+  }
+
   // ==================== DISCORD API METHODS ====================
 
   /// Upload an attachment to Discord via webhook.
@@ -3022,6 +3203,7 @@ class DisboxService extends ChangeNotifier {
       'size': size,
       'message_id': id,
       'chunk_message_ids': chunkMessageIds,
+      'mimeType': mimeType,
       'created_at': DateTime.now().toIso8601String(),
       'updated_at': DateTime.now().toIso8601String(),
     };
