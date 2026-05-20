@@ -1501,11 +1501,11 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       final tempFile = File('${tempDir.path}/$fileName');
       await tempFile.writeAsString(jsonData, encoding: utf8);
       
-      // Share the file with proper filename
+      // Share the file with proper filename and webhook name in text
       final result = await Share.shareXFiles(
         [XFile(tempFile.path, mimeType: 'application/json')],
         subject: 'Disbox Configuration',
-        text: '(^.^)',
+        text: 'Configuration for: $webhookName',
       );
       
       // Clean up temporary file after sharing
