@@ -1350,14 +1350,24 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
     if (confirmed != true || selectedFolder == null) return;
 
     try {
+      print('Moving: ${file.path} -> $selectedFolder');
+      
       await _disboxService.moveFile(file, selectedFolder!);
       
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Moved successfully')),
       );
       
-      _loadFiles(); // Refresh file list
+      // Force a complete reload of the file tree from storage
+      await _disboxService.reloadFileTree();
+      
+      // Navigate to the destination folder to show the moved item
+      setState(() {
+        _currentPath = selectedFolder!;
+      });
+      _loadFiles();
     } catch (e) {
+      print('[ERROR] Move failed: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Move failed: $e')),
       );

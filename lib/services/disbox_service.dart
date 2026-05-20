@@ -2592,23 +2592,177 @@ class DisboxService extends ChangeNotifier {
       return;
     }
 
-    // Get all files/folders under this folder and update their paths
-    final itemsToMove = <Map<String, dynamic>>[];
-    _collectItemsUnderPath(oldPath, itemsToMove);
-
-    for (final item in itemsToMove) {
-      final oldItemPath = item['path'] as String;
-      final newItemPath = newPath + oldItemPath.substring(oldPath.length);
-      
-      // Update the path in the item (local file tree only)
-      item['path'] = newItemPath;
-      
-      // NOTE: We do NOT update metadata messages on Discord webhooks
-      // Chunk message IDs remain unchanged so downloads still work
+    print('[DisboxService DEBUG] Moving folder in tree: $oldPath -> $newPath');
+    
+    // First, extract the folder node from its old location
+    final oldParts = oldPath.split('/').where((p) => p.isNotEmpty).toList();
+    if (oldParts.isEmpty) {
+      print('[DisboxService ERROR] Cannot move root folder');
+      return;
     }
+    
+    // Navigate to parent of old location
+    Map<String, dynamic>? currentFolder = _fileTree;
+    for (int i = 0; i < oldParts.length - 1; i++) {
+      final folderName = oldParts[i];
+      var childrenRaw = currentFolder!['children'];
+      Map<String, dynamic>? children;
+      
+      if (childrenRaw != null) {
+        if (childrenRaw is Map<String, dynamic>) {
+          children = childrenRaw;
+        } else if (childrenRaw is Map) {
+          children = <String, dynamic>{};
+          childrenRaw.forEach((key, value) {
+            children![key.toString()] = value;
+          });
+          currentFolder!['children'] = children;
+        }
+      }
 
+      if (children != null && children.containsKey(folderName)) {
+        currentFolder = children[folderName] as Map<String, dynamic>?;
+      } else {
+        print('[DisboxService ERROR] Old parent folder not found: $folderName');
+        return;
+      }
+    }
+    
+    // Get the folder node and remove from old location
+    final oldFolderName = oldParts.last;
+    var oldChildrenRaw = currentFolder!['children'];
+    Map<String, dynamic>? oldChildren;
+    
+    if (oldChildrenRaw != null) {
+      if (oldChildrenRaw is Map<String, dynamic>) {
+        oldChildren = oldChildrenRaw;
+      } else if (oldChildrenRaw is Map) {
+        oldChildren = <String, dynamic>{};
+        oldChildrenRaw.forEach((key, value) {
+          oldChildren![key.toString()] = value;
+        });
+        currentFolder!['children'] = oldChildren;
+      }
+    }
+    
+    if (oldChildren == null || !oldChildren.containsKey(oldFolderName)) {
+      print('[DisboxService ERROR] Folder not found at old location: $oldFolderName');
+      return;
+    }
+    
+    // Extract the folder node
+    final folderNodeData = Map<String, dynamic>.from(oldChildren[oldFolderName] as Map<String, dynamic>);
+    oldChildren.remove(oldFolderName);
+    print('[DisboxService DEBUG] Removed folder from old location: $oldFolderName');
+    
+    // Now navigate to new parent folder
+    final newParts = newPath.split('/').where((p) => p.isNotEmpty).toList();
+    currentFolder = _fileTree;
+    
+    for (int i = 0; i < newParts.length - 1; i++) {
+      final folderName = newParts[i];
+      var childrenRaw = currentFolder!['children'];
+      Map<String, dynamic>? children;
+      
+      if (childrenRaw != null) {
+        if (childrenRaw is Map<String, dynamic>) {
+          children = childrenRaw;
+        } else if (childrenRaw is Map) {
+          children = <String, dynamic>{};
+          childrenRaw.forEach((key, value) {
+            children![key.toString()] = value;
+          });
+          currentFolder!['children'] = children;
+        }
+      }
+
+      if (children != null && children.containsKey(folderName)) {
+        currentFolder = children[folderName] as Map<String, dynamic>?;
+      } else {
+        print('[DisboxService ERROR] New parent folder not found: $folderName');
+        return;
+      }
+    }
+    
+    // Add to new location
+    final newFolderName = newParts.last;
+    var newChildrenRaw = currentFolder!['children'];
+    Map<String, dynamic> newChildrenMap;
+    
+    if (newChildrenRaw == null) {
+      newChildrenMap = <String, dynamic>{};
+      currentFolder!['children'] = newChildrenMap;
+    } else if (newChildrenRaw is Map<String, dynamic>) {
+      newChildrenMap = newChildrenRaw;
+    } else {
+      newChildrenMap = <String, dynamic>{};
+      if (newChildrenRaw is Map) {
+        newChildrenRaw.forEach((key, value) {
+          newChildrenMap[key.toString()] = value;
+        });
+      }
+      currentFolder!['children'] = newChildrenMap;
+    }
+    
+    // Update the path in the folder node
+    folderNodeData['path'] = newPath;
+    newChildrenMap[newFolderName] = folderNodeData;
+    print('[DisboxService DEBUG] Added folder to new location: $newFolderName');
+    
+    // Now update all child item paths recursively
+    final itemsToMove = <Map<String, dynamic>>[];
+    _collectItemsUnderNode(folderNodeData, itemsToMove, newPath);
+    
+    for (final item in itemsToMove) {
+      // Paths are already correct from _collectItemsUnderNode
+      print('[DisboxService DEBUG] Updated child path: ${item['path']}');
+    }
+    
     // Save updated file tree locally
     await _saveFileTree();
+  }
+  
+  /// Recursively collect all items under a folder node (not path).
+  void _collectItemsUnderNode(Map<String, dynamic> folderNode, List<Map<String, dynamic>> items, String basePath) {
+    final childrenRaw = folderNode['children'];
+    if (childrenRaw == null) return;
+
+    Map<String, dynamic> children;
+    if (childrenRaw is Map<String, dynamic>) {
+      children = childrenRaw;
+    } else if (childrenRaw is Map) {
+      children = <String, dynamic>{};
+      childrenRaw.forEach((key, value) {
+        children[key.toString()] = value;
+      });
+    } else {
+      return;
+    }
+
+    children.forEach((name, childNode) {
+      if (childNode is! Map<String, dynamic>) return;
+
+      final itemType = childNode['type'] as String?;
+      final itemPath = '$basePath/$name';
+
+      if (itemType == 'file') {
+        // Update the path in the node
+        childNode['path'] = itemPath;
+        items.add({
+          'id': childNode['id'] as String,
+          'name': name,
+          'path': itemPath,
+          'isFolder': false,
+          'size': childNode['size'] as int? ?? 0,
+          'mimeType': childNode['mimeType'] as String? ?? 'application/octet-stream',
+          'chunkMessageIds': (childNode['chunk_message_ids'] as List?)?.cast<String>() ?? [],
+        });
+      } else if (itemType == 'folder' || childNode.containsKey('children')) {
+        // It's a folder, update its path and recurse
+        childNode['path'] = itemPath;
+        _collectItemsUnderNode(childNode, items, itemPath);
+      }
+    });
   }
 
   /// Move a folder and all its children in the file tree (OLD METHOD - updates webhook metadata).
