@@ -1265,8 +1265,25 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
     // Get all available folders for destination selection
     final allFolders = await _getAllFolders();
     
-    // Add root as an option
-    final folderOptions = ['/'] + allFolders.where((f) => f != '/').toList();
+    // Filter out invalid destinations:
+    // 1. Can't move a folder into itself
+    // 2. Can't move a folder into its own subfolder (would create circular reference)
+    final validFolders = allFolders.where((folder) {
+      if (file.isFolder) {
+        // Can't move folder into itself
+        if (folder == file.path) return false;
+        
+        // Can't move folder into its own subfolder
+        // Check if folder starts with file.path + '/'
+        if (folder.startsWith('${file.path}/')) return false;
+      }
+      return true;
+    }).toList();
+    
+    // Add root as an option if not already present
+    if (!validFolders.contains('/')) {
+      validFolders.insert(0, '/');
+    }
     
     String? selectedFolder;
     
@@ -1281,13 +1298,20 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
             children: [
               Text('Select destination folder for "${file.name}":'),
               const SizedBox(height: 16),
+              if (file.isFolder) ...[
+                const Text(
+                  'Note: Cannot move a folder into itself or its subfolders.',
+                  style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                ),
+                const SizedBox(height: 8),
+              ],
               Container(
                 constraints: const BoxConstraints(maxHeight: 300),
                 child: ListView.builder(
                   shrinkWrap: true,
-                  itemCount: folderOptions.length,
+                  itemCount: validFolders.length,
                   itemBuilder: (context, index) {
-                    final folder = folderOptions[index];
+                    final folder = validFolders[index];
                     final isSelected = selectedFolder == folder;
                     return ListTile(
                       leading: Icon(Icons.folder, 
