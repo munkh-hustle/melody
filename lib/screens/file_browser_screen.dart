@@ -1377,7 +1377,8 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
   /// Get all folder paths from the file tree
   Future<List<String>> _getAllFolders() async {
     final folders = <String>['/'];
-    await _collectFolders(_currentPath, folders);
+    // Always start from root to get ALL folders, not just from current path
+    await _collectFolders('/', folders);
     return folders..sort();
   }
 
