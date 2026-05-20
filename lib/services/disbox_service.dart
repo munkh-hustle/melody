@@ -2360,19 +2360,15 @@ class DisboxService extends ChangeNotifier {
     final newPath = _normalizePath('$normalizedDestPath/${file.name}');
 
     print('Moving: ${file.path} -> $newPath');
+    print('NOTE: Only updating local file tree (UI). Chunk message IDs remain unchanged for downloads.');
 
-    // Update metadata message with new path
-    await _updateMetadataMessage(file.id, {
-      'path': newPath,
-    });
-
-    // Remove from old location in file tree
+    // Remove from old location in file tree FIRST
     await _removeFileFromFileTree(file.path, isFolder: file.isFolder);
 
     // Add to new location in file tree
     if (file.isFolder) {
-      // For folders, we need to update all children paths as well
-      await _moveFolderInFileTree(file.path, newPath);
+      // For folders, we need to update all children paths in the local tree only
+      await _moveFolderInFileTreeLocalOnly(file.path, newPath);
     } else {
       await _addFileToFileTree(
         id: file.id,
@@ -2384,7 +2380,7 @@ class DisboxService extends ChangeNotifier {
       );
     }
 
-    // Update cached object with new path
+    // Update cached object with new path (chunkMessageIds stay the same!)
     final updatedFile = DisboxFile(
       id: file.id,
       name: file.name,
@@ -2392,7 +2388,7 @@ class DisboxService extends ChangeNotifier {
       isFolder: file.isFolder,
       size: file.size,
       mimeType: file.mimeType,
-      chunkMessageIds: file.chunkMessageIds,
+      chunkMessageIds: file.chunkMessageIds, // Keep original chunk IDs for downloads
       createdAt: file.createdAt,
       modifiedAt: DateTime.now(),
       parentId: _getParentFolderId(normalizedDestPath),
@@ -2404,7 +2400,34 @@ class DisboxService extends ChangeNotifier {
     return updatedFile;
   }
 
-  /// Move a folder and all its children in the file tree.
+  /// Move a folder and all its children in the file tree (LOCAL ONLY - no webhook updates).
+  Future<void> _moveFolderInFileTreeLocalOnly(String oldPath, String newPath) async {
+    if (_fileTree == null) {
+      print('File tree not initialized');
+      return;
+    }
+
+    // Get all files/folders under this folder and update their paths
+    final itemsToMove = <Map<String, dynamic>>[];
+    _collectItemsUnderPath(oldPath, itemsToMove);
+
+    for (final item in itemsToMove) {
+      final oldItemPath = item['path'] as String;
+      final newItemPath = newPath + oldItemPath.substring(oldPath.length);
+      
+      // Update the path in the item (local file tree only)
+      item['path'] = newItemPath;
+      
+      // NOTE: We do NOT update metadata messages on Discord webhooks
+      // Chunk message IDs remain unchanged so downloads still work
+    }
+
+    // Save updated file tree locally
+    await _saveFileTree();
+  }
+
+  /// Move a folder and all its children in the file tree (OLD METHOD - updates webhook metadata).
+  @Deprecated('Use _moveFolderInFileTreeLocalOnly instead to avoid webhook API calls')
   Future<void> _moveFolderInFileTree(String oldPath, String newPath) async {
     if (_fileTree == null) {
       print('File tree not initialized');
