@@ -1174,7 +1174,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
                 },
               ),
             ListTile(
-              leading: const Icon(Icons.folder_move),
+              leading: const Icon(Icons.drive_file_move),
               title: const Text('Move'),
               onTap: () {
                 print('[DEBUG] Move tapped');
@@ -1324,7 +1324,7 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
     if (confirmed != true || selectedFolder == null) return;
 
     try {
-      await _disboxService.moveFile(file, selectedFolder);
+      await _disboxService.moveFile(file, selectedFolder!);
       
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Moved successfully')),
