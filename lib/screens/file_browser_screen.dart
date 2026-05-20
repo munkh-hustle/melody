@@ -1292,42 +1292,44 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Move to Folder'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Select destination folder for "${file.name}":'),
-              const SizedBox(height: 16),
-              if (file.isFolder) ...[
-                const Text(
-                  'Note: Cannot move a folder into itself or its subfolders.',
-                  style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Select destination folder for "${file.name}":'),
+                const SizedBox(height: 16),
+                if (file.isFolder) ...[
+                  const Text(
+                    'Note: Cannot move a folder into itself or its subfolders.',
+                    style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                SizedBox(
+                  height: 300,
+                  child: ListView.builder(
+                    itemCount: validFolders.length,
+                    itemBuilder: (context, index) {
+                      final folder = validFolders[index];
+                      final isSelected = selectedFolder == folder;
+                      return ListTile(
+                        leading: Icon(Icons.folder, 
+                          color: isSelected ? Theme.of(context).primaryColor : null),
+                        title: Text(folder == '/' ? 'Root (/)' : folder),
+                        selected: isSelected,
+                        onTap: () {
+                          setDialogState(() {
+                            selectedFolder = folder;
+                          });
+                        },
+                      );
+                    },
+                  ),
                 ),
-                const SizedBox(height: 8),
               ],
-              Container(
-                constraints: const BoxConstraints(maxHeight: 300),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: validFolders.length,
-                  itemBuilder: (context, index) {
-                    final folder = validFolders[index];
-                    final isSelected = selectedFolder == folder;
-                    return ListTile(
-                      leading: Icon(Icons.folder, 
-                        color: isSelected ? Theme.of(context).primaryColor : null),
-                      title: Text(folder == '/' ? 'Root (/)' : folder),
-                      selected: isSelected,
-                      onTap: () {
-                        setDialogState(() {
-                          selectedFolder = folder;
-                        });
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
+            ),
           ),
           actions: [
             TextButton(
