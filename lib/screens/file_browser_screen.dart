@@ -1174,6 +1174,15 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
                 },
               ),
             ListTile(
+              leading: const Icon(Icons.drive_file_move),
+              title: const Text('Move'),
+              onTap: () {
+                print('[DEBUG] Move tapped');
+                Navigator.pop(context);
+                _moveFile(file);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.edit),
               title: const Text('Rename'),
               onTap: () {
@@ -1248,6 +1257,144 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Rename failed: $e')),
       );
+    }
+  }
+
+  /// Move a file or folder to another folder
+  Future<void> _moveFile(DisboxFile file) async {
+    // Get all available folders for destination selection
+    final allFolders = await _getAllFolders();
+    
+    // Filter out invalid destinations:
+    // 1. Can't move a folder into itself
+    // 2. Can't move a folder into its own subfolder (would create circular reference)
+    final validFolders = allFolders.where((folder) {
+      if (file.isFolder) {
+        // Can't move folder into itself
+        if (folder == file.path) return false;
+        
+        // Can't move folder into its own subfolder
+        // Check if folder starts with file.path + '/'
+        if (folder.startsWith('${file.path}/')) return false;
+      }
+      return true;
+    }).toList();
+    
+    // Add root as an option if not already present
+    if (!validFolders.contains('/')) {
+      validFolders.insert(0, '/');
+    }
+    
+    String? selectedFolder;
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Move to Folder'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Select destination folder for "${file.name}":'),
+                const SizedBox(height: 16),
+                if (file.isFolder) ...[
+                  const Text(
+                    'Note: Cannot move a folder into itself or its subfolders.',
+                    style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                SizedBox(
+                  height: 300,
+                  child: ListView.builder(
+                    itemCount: validFolders.length,
+                    itemBuilder: (context, index) {
+                      final folder = validFolders[index];
+                      final isSelected = selectedFolder == folder;
+                      return ListTile(
+                        leading: Icon(Icons.folder, 
+                          color: isSelected ? Theme.of(context).primaryColor : null),
+                        title: Text(folder == '/' ? 'Root (/)' : folder),
+                        selected: isSelected,
+                        onTap: () {
+                          setDialogState(() {
+                            selectedFolder = folder;
+                          });
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: selectedFolder != null 
+                ? () => Navigator.pop(context, true) 
+                : null,
+              child: const Text('Move'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || selectedFolder == null) return;
+
+    try {
+      print('Moving: ${file.path} -> $selectedFolder');
+      
+      await _disboxService.moveFile(file, selectedFolder!);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Moved successfully')),
+      );
+      
+      // Force a complete reload of the file tree from storage
+      await _disboxService.reloadFileTree();
+      
+      // Navigate to the destination folder to show the moved item
+      setState(() {
+        _currentPath = selectedFolder!;
+      });
+      _loadFiles();
+    } catch (e) {
+      print('[ERROR] Move failed: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Move failed: $e')),
+      );
+    }
+  }
+
+  /// Get all folder paths from the file tree
+  Future<List<String>> _getAllFolders() async {
+    final folders = <String>['/'];
+    // Always start from root to get ALL folders, not just from current path
+    await _collectFolders('/', folders);
+    return folders..sort();
+  }
+
+  /// Recursively collect all folder paths
+  Future<void> _collectFolders(String path, List<String> folders) async {
+    try {
+      final files = await _disboxService.listFiles(folderPath: path);
+      for (final file in files) {
+        if (file.isFolder) {
+          folders.add(file.path);
+          // Recurse into subfolders
+          await _collectFolders(file.path, folders);
+        }
+      }
+    } catch (e) {
+      print('[ERROR] Failed to collect folders: $e');
     }
   }
 
@@ -1354,11 +1501,11 @@ class _FileBrowserScreenState extends State<FileBrowserScreen> {
       final tempFile = File('${tempDir.path}/$fileName');
       await tempFile.writeAsString(jsonData, encoding: utf8);
       
-      // Share the file with proper filename
+      // Share the file with proper filename and webhook name in text
       final result = await Share.shareXFiles(
         [XFile(tempFile.path, mimeType: 'application/json')],
         subject: 'Disbox Configuration',
-        text: '(^.^)',
+        text: 'Configuration for: $webhookName',
       );
       
       // Clean up temporary file after sharing
