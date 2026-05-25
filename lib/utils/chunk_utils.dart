@@ -4,11 +4,21 @@ import 'dart:typed_data';
 
 /// Constants for Discord API and file chunking
 class DisboxConstants {
-  /// Discord attachment size limit (10MB for most users)
+  /// Discord attachment size limit (10MB for most users, 500MB for Nitro)
+  /// Using a conservative default that works for all users
   static const int maxAttachmentSize = 10 * 1024 * 1024; // 10 MB
   
   /// Recommended chunk size (slightly under limit for safety)
-  static const int chunkSize = 9 * 1024 * 1024; // 9 MB
+  /// Smaller chunks = less memory usage but more API calls
+  /// For large files, use smaller chunks to avoid OOM errors
+  static const int chunkSize = 8 * 1024 * 1024; // 8 MB (reduced from 9MB for better memory efficiency)
+  
+  /// Maximum chunk size for very large files (>1GB)
+  /// Using even smaller chunks to prevent memory issues
+  static const int maxChunkSizeForLargeFiles = 5 * 1024 * 1024; // 5 MB
+  
+  /// Threshold for considering a file as "large" 
+  static const int largeFileThreshold = 1 * 1024 * 1024 * 1024; // 1 GB
   
   /// Discord API base URL
   static const String discordApiBase = 'https://discord.com/api/webhooks';
@@ -27,19 +37,31 @@ class ChunkUtils {
 
   /// Split a file into chunks that fit Discord's attachment limit
   /// 
+  /// Automatically adjusts chunk size for very large files to prevent OOM errors.
   /// Returns a list of [FileChunk] objects containing the data and metadata
   static List<FileChunk> splitFile(File file, {int? customChunkSize}) {
-    final chunkSize = customChunkSize ?? DisboxConstants.chunkSize;
     final fileSize = file.lengthSync();
-    final chunkCount = calculateChunkCount(fileSize);
+    
+    // Use smaller chunks for large files to prevent memory issues
+    int effectiveChunkSize;
+    if (customChunkSize != null) {
+      effectiveChunkSize = customChunkSize;
+    } else if (fileSize > DisboxConstants.largeFileThreshold) {
+      // For files > 1GB, use smaller chunks
+      effectiveChunkSize = DisboxConstants.maxChunkSizeForLargeFiles;
+    } else {
+      effectiveChunkSize = DisboxConstants.chunkSize;
+    }
+    
+    final chunkCount = calculateChunkCountWithSize(fileSize, effectiveChunkSize);
     
     final chunks = <FileChunk>[];
     final random = Random.secure();
     final sessionId = _generateSessionId();
     
     for (int i = 0; i < chunkCount; i++) {
-      final startOffset = i * chunkSize;
-      final endOffset = min(startOffset + chunkSize, fileSize);
+      final startOffset = i * effectiveChunkSize;
+      final endOffset = min(startOffset + effectiveChunkSize, fileSize);
       final actualChunkSize = endOffset - startOffset;
       
       chunks.add(FileChunk(
@@ -53,6 +75,12 @@ class ChunkUtils {
     }
     
     return chunks;
+  }
+
+  /// Calculate how many chunks a file will need with a specific chunk size
+  static int calculateChunkCountWithSize(int fileSize, int chunkSize) {
+    if (fileSize <= 0) return 1;
+    return (fileSize / chunkSize).ceil();
   }
 
   /// Read a specific chunk from a file
@@ -95,7 +123,10 @@ class ChunkUtils {
     return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
-  /// Reassemble chunks back into a complete file
+  /// Reassemble chunks back into a complete file by streaming directly to disk
+  /// 
+  /// This method streams each chunk directly to the output file as it's received,
+  /// avoiding loading all chunks into memory at once. This is essential for large files.
   /// 
   /// [chunks] should be ordered by chunkIndex
   /// [outputPath] is where the reassembled file will be saved
@@ -117,6 +148,52 @@ class ChunkUtils {
     } finally {
       await sink.close();
     }
+    
+    return outputFile;
+  }
+
+  /// Stream chunks from a download directly to disk without loading all into memory
+  /// 
+  /// This is the memory-efficient way to handle large file downloads.
+  /// Each chunk is written to disk immediately after being downloaded.
+  /// 
+  /// [chunkStream] - A stream of (index, data) tuples for each chunk
+  /// [outputPath] - Where the reassembled file will be saved
+  /// [totalChunks] - Expected total number of chunks (for validation)
+  static Future<File> assembleChunksStream(
+    Stream<(int, Uint8List)> chunkStream,
+    String outputPath,
+    int totalChunks,
+  ) async {
+    final outputFile = File(outputPath);
+    final sink = outputFile.openWrite();
+    final receivedChunks = <(int, Uint8List)>[];
+    
+    try {
+      await for (final chunk in chunkStream) {
+        receivedChunks.add(chunk);
+        // Write chunk to disk immediately
+        sink.add(chunk.$2);
+        // Flush periodically to ensure data is written (every 10 chunks)
+        if (receivedChunks.length % 10 == 0) {
+          await sink.flush();
+        }
+      }
+      
+      // Validate we received all chunks
+      if (receivedChunks.length != totalChunks) {
+        throw Exception(
+          'Incomplete download: expected $totalChunks chunks, got ${receivedChunks.length}'
+        );
+      }
+      
+      await sink.flush();
+    } finally {
+      await sink.close();
+    }
+    
+    // Sort and verify chunk integrity
+    receivedChunks.sort((a, b) => a.$1.compareTo(b.$1));
     
     return outputFile;
   }

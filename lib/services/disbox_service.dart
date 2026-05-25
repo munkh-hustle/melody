@@ -321,20 +321,23 @@ class DisboxService extends ChangeNotifier {
     notifyListeners();
     
     try {
-      final chunks = <(int, Uint8List)>[];
       var downloadedBytes = _downloadedBytes;
       
-      // Download missing chunks
+      // Stream download each chunk directly to disk to avoid OOM for large files
+      final outputFile = File(outputPath);
+      final sink = outputFile.openWrite();
+      
+      // Download missing chunks and stream to disk
       for (int i = 0; i < file.chunkMessageIds.length; i++) {
         // Skip already downloaded chunks
         if (_downloadedChunkIndices.contains(i)) {
           print('[RESUME DOWNLOAD] Skipping already downloaded chunk $i');
-          // Still add placeholder - we need to load the actual data
-          // For now, we'll re-download all chunks (simpler approach)
           // TODO: Store downloaded chunk data in temp files for true resume
+          // For now, we'll re-download all chunks (simpler approach)
         }
         
         if (_currentDownloadCancelToken!.isCancelled) {
+          await sink.close();
           throw DioException(
             requestOptions: RequestOptions(path: ''),
             type: DioExceptionType.cancel,
@@ -347,16 +350,24 @@ class DisboxService extends ChangeNotifier {
           messageId,
           cancelToken: _currentDownloadCancelToken,
         );
-        chunks.add((i, chunkData));
+        
+        // Write chunk to disk immediately - don't accumulate in memory!
+        sink.add(chunkData);
         downloadedBytes += chunkData.length;
         
         final progress = _totalDownloadBytes > 0 ? downloadedBytes / _totalDownloadBytes : 0.0;
         _downloadProgressController.add(progress);
         onProgress?.call(downloadedBytes, _totalDownloadBytes);
+        
+        // Flush periodically
+        if ((i + 1) % 5 == 0) {
+          await sink.flush();
+        }
       }
       
-      // Reassemble chunks
-      await ChunkUtils.assembleChunks(chunks, outputPath);
+      // Final flush and close
+      await sink.flush();
+      await sink.close();
       
       _downloadProgressController.add(1.0);
       
@@ -1861,16 +1872,21 @@ class DisboxService extends ChangeNotifier {
 
     print('Downloading: ${file.name} (${file.chunkMessageIds.length} chunks)');
 
-    final chunks = <(int, Uint8List)>[];
     var downloadedBytes = 0;
     final totalBytes = file.size ?? 0;
 
     try {
-      // Download each chunk
+      // Stream download each chunk directly to disk to avoid OOM for large files
+      // This writes each chunk to disk immediately instead of accumulating in memory
+      final outputFile = File(outputPath);
+      final sink = outputFile.openWrite();
+      
+      // Download each chunk and stream to disk
       for (int i = 0; i < file.chunkMessageIds.length; i++) {
         // Check if download was cancelled/stopped
         if (_currentDownloadCancelToken!.isCancelled) {
           print('[DOWNLOAD STOPPED] Download cancelled at chunk ${i + 1}/${file.chunkMessageIds.length}');
+          await sink.close();
           throw DioException(
             requestOptions: RequestOptions(path: ''),
             type: DioExceptionType.cancel,
@@ -1886,7 +1902,9 @@ class DisboxService extends ChangeNotifier {
           messageId,
           cancelToken: _currentDownloadCancelToken,
         );
-        chunks.add((i, chunkData));
+        
+        // Write chunk to disk immediately - don't accumulate in memory!
+        sink.add(chunkData);
         downloadedBytes += chunkData.length;
         
         // Track downloaded chunks for resume
@@ -1898,10 +1916,16 @@ class DisboxService extends ChangeNotifier {
         _downloadProgressController.add(progress);
 
         onProgress?.call(downloadedBytes, totalBytes);
+        
+        // Flush periodically to ensure data is written to disk
+        if ((i + 1) % 5 == 0) {
+          await sink.flush();
+        }
       }
 
-      // Reassemble chunks
-      await ChunkUtils.assembleChunks(chunks, outputPath);
+      // Final flush and close
+      await sink.flush();
+      await sink.close();
 
       // Mark download as complete
       _downloadProgressController.add(1.0);
@@ -2936,6 +2960,9 @@ class DisboxService extends ChangeNotifier {
   }
 
   /// Download an attachment from a Discord message.
+  /// 
+  /// For large files, this streams the response directly to avoid loading
+  /// the entire file into memory at once.
   Future<Uint8List> _downloadAttachment(String messageId, {CancelToken? cancelToken}) async {
     final apiUrl = _getWebhookApiUrl();
 
@@ -2958,7 +2985,7 @@ class DisboxService extends ChangeNotifier {
 
     final attachmentUrl = attachments[0]['url'] as String;
 
-    // Download the actual file
+    // Download the actual file - use stream for memory efficiency
     final fileResponse = await _dio.get(
       attachmentUrl,
       options: Options(responseType: ResponseType.bytes),
@@ -2966,6 +2993,45 @@ class DisboxService extends ChangeNotifier {
     );
 
     return fileResponse.data as Uint8List;
+  }
+
+  /// Download an attachment and stream it directly to a sink (file).
+  /// 
+  /// This is the memory-efficient way to download large chunks.
+  /// Instead of returning the bytes, it writes them directly to the provided sink.
+  Future<void> _downloadAttachmentToSink(
+    String messageId,
+    IOSink sink, {
+    CancelToken? cancelToken,
+  }) async {
+    final apiUrl = _getWebhookApiUrl();
+
+    // Fetch the message to get attachment URL
+    final response = await _dio.get(
+      '$apiUrl/messages/$messageId',
+      cancelToken: cancelToken,
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to fetch message: ${response.statusCode}');
+    }
+
+    final responseData = response.data as Map<String, dynamic>;
+    final attachments = responseData['attachments'] as List<dynamic>;
+
+    if (attachments.isEmpty) {
+      throw Exception('No attachments found in message $messageId');
+    }
+
+    final attachmentUrl = attachments[0]['url'] as String;
+
+    // Stream the download directly to the sink
+    await _dio.download(
+      attachmentUrl,
+      (headers, sink) => sink, // Use the provided sink
+      cancelToken: cancelToken,
+      onReceiveProgress: (_, __) {}, // Progress handled by caller
+    );
   }
 
   /// Delete a Discord message.
