@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as Math;
 import 'dart:typed_data';
+import 'dart:isolate';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -218,7 +219,8 @@ class DisboxService extends ChangeNotifier {
         
         while (!success && retryCount < maxRetries) {
           try {
-            final chunkData = await ChunkUtils.readChunk(file, i);
+            // Use isolate-based chunk reading for better memory management
+            final chunkData = await ChunkUtils.readChunkIsolate(file, i);
             
             final messageId = await _uploadAttachment(
               chunkData,
@@ -346,14 +348,18 @@ class DisboxService extends ChangeNotifier {
         }
         
         final messageId = file.chunkMessageIds[i];
-        final chunkData = await _downloadAttachment(
+        // Stream chunk directly to disk to avoid loading into memory
+        await _downloadAttachmentToSink(
           messageId,
+          sink,
           cancelToken: _currentDownloadCancelToken,
         );
         
-        // Write chunk to disk immediately - don't accumulate in memory!
-        sink.add(chunkData);
-        downloadedBytes += chunkData.length;
+        final chunkLength = await ChunkUtils.readChunkLength(
+          File(_currentUploadFilePath!), 
+          i
+        );
+        downloadedBytes += chunkLength;
         
         final progress = _totalDownloadBytes > 0 ? downloadedBytes / _totalDownloadBytes : 0.0;
         _downloadProgressController.add(progress);
@@ -1657,7 +1663,8 @@ class DisboxService extends ChangeNotifier {
 
           while (!success && retryCount < maxRetries) {
             try {
-              final chunkData = await ChunkUtils.readChunk(file, i);
+              // Use isolate-based chunk reading for better memory management
+              final chunkData = await ChunkUtils.readChunkIsolate(file, i);
 
               print(
                   'Uploading chunk ${i + 1}/${chunks.length} (${chunkData.length} bytes)');
@@ -1898,14 +1905,22 @@ class DisboxService extends ChangeNotifier {
 
         print('Downloading chunk ${i + 1}/${file.chunkMessageIds.length}');
 
-        final chunkData = await _downloadAttachment(
+        // Stream chunk directly to disk to avoid loading into memory
+        await _downloadAttachmentToSink(
           messageId,
+          sink,
           cancelToken: _currentDownloadCancelToken,
         );
         
-        // Write chunk to disk immediately - don't accumulate in memory!
-        sink.add(chunkData);
-        downloadedBytes += chunkData.length;
+      // Calculate chunk length from file size info  
+      final effectiveChunkSize = totalBytes > DisboxConstants.largeFileThreshold
+          ? DisboxConstants.maxChunkSizeForLargeFiles
+          : DisboxConstants.chunkSize;
+      final remainingBytes = totalBytes - downloadedBytes;
+      final actualChunkLength = (i < file.chunkMessageIds.length - 1)
+          ? effectiveChunkSize
+          : remainingBytes;
+      downloadedBytes += actualChunkLength;
         
         // Track downloaded chunks for resume
         _downloadedChunkIndices.add(i);

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
+import 'dart:isolate';
 
 /// Constants for Discord API and file chunking
 class DisboxConstants {
@@ -15,7 +16,7 @@ class DisboxConstants {
   
   /// Maximum chunk size for very large files (>1GB)
   /// Using even smaller chunks to prevent memory issues
-  static const int maxChunkSizeForLargeFiles = 5 * 1024 * 1024; // 5 MB
+  static const int maxChunkSizeForLargeFiles = 4 * 1024 * 1024; // 4 MB (reduced from 5MB)
   
   /// Threshold for considering a file as "large" 
   static const int largeFileThreshold = 1 * 1024 * 1024 * 1024; // 1 GB
@@ -114,6 +115,40 @@ class ChunkUtils {
     final startOffset = chunkIndex * chunkSize;
     final remaining = file.lengthSync() - startOffset;
     return min(chunkSize, remaining);
+  }
+
+  /// Read a chunk using an isolate to avoid blocking the main thread
+  /// 
+  /// This is essential for large files to prevent UI freezes and allow
+  /// better memory management by isolating the I/O operation.
+  static Future<Uint8List> readChunkIsolate(File file, int chunkIndex, {int? customChunkSize}) async {
+    final chunkSize = customChunkSize ?? DisboxConstants.chunkSize;
+    final startOffset = chunkIndex * chunkSize;
+    final fileSize = file.lengthSync();
+    final bytesToRead = min(chunkSize, fileSize - startOffset);
+    final filePath = file.path;
+    
+    // Use compute to run in isolate for large chunks
+    if (bytesToRead > 1024 * 1024) { // Use isolate for chunks > 1MB
+      return await Isolate.run(() => _readChunkInIsolate(filePath, startOffset, bytesToRead));
+    } else {
+      // For small chunks, just read directly
+      return await readChunk(file, chunkIndex, customChunkSize: customChunkSize);
+    }
+  }
+  
+  /// Helper method to read chunk in isolate
+  static Uint8List _readChunkInIsolate(String filePath, int startOffset, int bytesToRead) {
+    final file = File(filePath);
+    final raf = file.openSync(mode: FileMode.read);
+    try {
+      raf.setPositionSync(startOffset);
+      final buffer = Uint8List(bytesToRead);
+      raf.readIntoSync(buffer);
+      return buffer;
+    } finally {
+      raf.closeSync();
+    }
   }
 
   /// Generate a unique session ID for tracking chunk uploads
