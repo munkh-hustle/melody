@@ -44,8 +44,16 @@ class ChunkUtils {
 
   /// Split a file into chunks that fit Discord's attachment limit
   /// 
-  /// Automatically adjusts chunk size for very large files to prevent OOM errors.
-  /// Returns a list of [FileChunk] objects containing the data and metadata
+  /// IMPORTANT: This method does NOT load the file into memory!
+  /// It only creates metadata objects (FileChunk) with offset and size information.
+  /// The actual file data is read on-demand by [readChunk] when needed.
+  /// 
+  /// Automatically adjusts chunk size for very large files to prevent OOM errors:
+  /// - Files > 5GB: 2MB chunks (~5000 chunks for 10GB file)
+  /// - Files > 1GB: 3MB chunks
+  /// - Other files: 8MB chunks
+  /// 
+  /// Returns a list of [FileChunk] objects containing ONLY metadata (no file data)
   static List<FileChunk> splitFile(File file, {int? customChunkSize}) {
     final fileSize = file.lengthSync();
     
@@ -97,6 +105,9 @@ class ChunkUtils {
   /// 
   /// [chunkIndex] is 0-based index of which chunk to read
   /// Returns the bytes for that chunk
+  /// 
+  /// Memory-efficient: Opens file, reads only the needed bytes, closes immediately.
+  /// Does NOT load entire file into memory - only reads the specific chunk range.
   static Future<Uint8List> readChunk(File file, int chunkIndex, {int? customChunkSize}) async {
     final fileSize = file.lengthSync();
     
@@ -114,19 +125,23 @@ class ChunkUtils {
     
     final startOffset = chunkIndex * chunkSize;
     
+    // Open file in random access mode - does NOT load entire file
     final raf = await file.open(mode: FileMode.read);
     try {
+      // Seek directly to the chunk's starting position (O(1) operation)
       await raf.setPosition(startOffset);
       
-      // Read up to chunkSize bytes
+      // Calculate how many bytes to read (last chunk may be smaller)
       final remaining = file.lengthSync() - startOffset;
       final bytesToRead = min(chunkSize, remaining);
       
+      // Allocate buffer ONLY for this chunk (2-8MB max, NOT entire file)
       final buffer = Uint8List(bytesToRead);
       await raf.readInto(buffer);
       
       return buffer;
     } finally {
+      // Close file handle immediately after reading
       await raf.close();
     }
   }

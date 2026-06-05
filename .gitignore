@@ -1,38 +1,30 @@
 ```
-# Dart/Flutter specific
+# Dependencies
+.pub/
 .dart_tool/
 .build/
-.packages
-pubspec.lock
-
-# Dependencies
-.venv/
-venv/
-node_modules/
 
 # Logs and temp files
 *.log
 *.tmp
-*.swp
 
 # Environment
 .env
 .env.local
 *.env.*
 
-# Editors
-.vscode/
+# IDE
 .idea/
+.vscode/
+*.swp
+*.swo
 
-# Build artifacts
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
 build/
 dist/
 target/
-
-# Python related (if any Python in project)
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
 ```

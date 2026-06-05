@@ -1657,8 +1657,9 @@ class DisboxService extends ChangeNotifier {
           bool success = false;
 
           while (!success && retryCount < maxRetries) {
+            Uint8List? chunkData;
             try {
-              final chunkData = await ChunkUtils.readChunk(file, i);
+              chunkData = await ChunkUtils.readChunk(file, i);
 
               print(
                   'Uploading chunk ${i + 1}/${chunks.length} (${chunkData.length} bytes)');
@@ -1685,12 +1686,9 @@ class DisboxService extends ChangeNotifier {
                   'Chunk ${i + 1}/${chunks.length} uploaded successfully. Message ID: $messageId');
               onProgress?.call(uploadedBytes, fileSize);
               success = true;
-              
-              // Explicitly clear chunk data reference to help garbage collection
-              // This is critical for large files to prevent OOM errors
-            } on DioException catch (e) {
+            } catch (e) {
               // Check if this was a cancellation
-              if (e.type == DioExceptionType.cancel) {
+              if (e is DioException && e.type == DioExceptionType.cancel) {
                 print('[UPLOAD STOPPED] Upload intentionally stopped by user');
                 // Don't print stack trace for intentional stops
                 rethrow;
@@ -1700,7 +1698,7 @@ class DisboxService extends ChangeNotifier {
               if (retryCount >= maxRetries) {
                 print(
                     '[UPLOAD ERROR] Failed to upload chunk ${i + 1}/${chunks.length} after $maxRetries retries: $e');
-                print('[UPLOAD ERROR] Stack Trace: ${e.stackTrace}');
+                print('[UPLOAD ERROR] Stack Trace: ${e is Error ? (e as Error).stackTrace : StackTrace.current}');
                 rethrow;
               }
               
@@ -1709,13 +1707,24 @@ class DisboxService extends ChangeNotifier {
               print(
                   '[UPLOAD] Chunk ${i + 1}/${chunks.length} failed (attempt $retryCount/$maxRetries). Retrying in ${delayMs}ms...');
               await Future.delayed(Duration(milliseconds: delayMs));
+            } finally {
+              // CRITICAL: Explicitly null out chunkData to allow GC before next iteration
+              // This prevents memory accumulation during large file uploads (10GB+)
+              chunkData = null;
             }
           }
           
-          // Force a small delay between chunks to allow GC to run
-          // This helps prevent memory buildup during large file uploads
+          // Force GC-friendly delay between chunks
+          // Critical for large files: allows Dart VM to reclaim memory before next chunk
           if (i < chunks.length - 1) {
-            await Future.delayed(Duration(milliseconds: 50));
+            // Longer delay for very large files to ensure GC can run
+            final gcDelay = fileSize > DisboxConstants.extraLargeFileThreshold 
+                ? 150  // 150ms for files > 5GB
+                : 50;  // 50ms for smaller files
+            await Future.delayed(Duration(milliseconds: gcDelay));
+            
+            // Yield to event loop to allow GC to run
+            await Future.microtask(() {});
           }
         }
       } else {
@@ -2930,6 +2939,8 @@ class DisboxService extends ChangeNotifier {
     print('[UPLOAD ATTACHMENT] API URL: $apiUrl');
 
     // Create multipart form data
+    // MultipartFile.fromBytes is fine here since chunkData is already limited by chunkSize
+    // (2-8MB depending on file size), which is small enough to fit in memory safely
     final formData = FormData.fromMap({
       'file': MultipartFile.fromBytes(
         data,
