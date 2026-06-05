@@ -15,10 +15,17 @@ class DisboxConstants {
   
   /// Maximum chunk size for very large files (>1GB)
   /// Using even smaller chunks to prevent memory issues
-  static const int maxChunkSizeForLargeFiles = 5 * 1024 * 1024; // 5 MB
+  static const int maxChunkSizeForLargeFiles = 3 * 1024 * 1024; // 3 MB (reduced from 5MB for 10GB+ files)
+  
+  /// Ultra-small chunk size for extremely large files (>5GB)
+  /// Minimal memory footprint for massive file uploads
+  static const int ultraSmallChunkSize = 2 * 1024 * 1024; // 2 MB for files > 5GB
   
   /// Threshold for considering a file as "large" 
   static const int largeFileThreshold = 1 * 1024 * 1024 * 1024; // 1 GB
+  
+  /// Threshold for extremely large files requiring ultra-small chunks
+  static const int extraLargeFileThreshold = 5 * 1024 * 1024 * 1024; // 5 GB
   
   /// Discord API base URL
   static const String discordApiBase = 'https://discord.com/api/webhooks';
@@ -46,6 +53,9 @@ class ChunkUtils {
     int effectiveChunkSize;
     if (customChunkSize != null) {
       effectiveChunkSize = customChunkSize;
+    } else if (fileSize > DisboxConstants.extraLargeFileThreshold) {
+      // For files > 5GB, use ultra-small chunks to minimize memory usage
+      effectiveChunkSize = DisboxConstants.ultraSmallChunkSize;
     } else if (fileSize > DisboxConstants.largeFileThreshold) {
       // For files > 1GB, use smaller chunks
       effectiveChunkSize = DisboxConstants.maxChunkSizeForLargeFiles;
@@ -88,7 +98,20 @@ class ChunkUtils {
   /// [chunkIndex] is 0-based index of which chunk to read
   /// Returns the bytes for that chunk
   static Future<Uint8List> readChunk(File file, int chunkIndex, {int? customChunkSize}) async {
-    final chunkSize = customChunkSize ?? DisboxConstants.chunkSize;
+    final fileSize = file.lengthSync();
+    
+    // Automatically determine chunk size based on file size if not provided
+    int chunkSize;
+    if (customChunkSize != null) {
+      chunkSize = customChunkSize;
+    } else if (fileSize > DisboxConstants.extraLargeFileThreshold) {
+      chunkSize = DisboxConstants.ultraSmallChunkSize;
+    } else if (fileSize > DisboxConstants.largeFileThreshold) {
+      chunkSize = DisboxConstants.maxChunkSizeForLargeFiles;
+    } else {
+      chunkSize = DisboxConstants.chunkSize;
+    }
+    
     final startOffset = chunkIndex * chunkSize;
     
     final raf = await file.open(mode: FileMode.read);
@@ -110,7 +133,20 @@ class ChunkUtils {
 
   /// Get the size of a specific chunk without reading it
   static Future<int> readChunkLength(File file, int chunkIndex, {int? customChunkSize}) async {
-    final chunkSize = customChunkSize ?? DisboxConstants.chunkSize;
+    final fileSize = file.lengthSync();
+    
+    // Automatically determine chunk size based on file size if not provided
+    int chunkSize;
+    if (customChunkSize != null) {
+      chunkSize = customChunkSize;
+    } else if (fileSize > DisboxConstants.extraLargeFileThreshold) {
+      chunkSize = DisboxConstants.ultraSmallChunkSize;
+    } else if (fileSize > DisboxConstants.largeFileThreshold) {
+      chunkSize = DisboxConstants.maxChunkSizeForLargeFiles;
+    } else {
+      chunkSize = DisboxConstants.chunkSize;
+    }
+    
     final startOffset = chunkIndex * chunkSize;
     final remaining = file.lengthSync() - startOffset;
     return min(chunkSize, remaining);

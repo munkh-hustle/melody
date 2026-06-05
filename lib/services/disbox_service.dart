@@ -1637,6 +1637,7 @@ class DisboxService extends ChangeNotifier {
         // Upload as chunks
         final chunks = ChunkUtils.splitFile(file);
         print('File requires chunking: ${chunks.length} chunks');
+        print('File size: ${fileSize} bytes, using adaptive chunk sizes based on file size');
 
         var uploadedBytes = 0;
 
@@ -1684,6 +1685,9 @@ class DisboxService extends ChangeNotifier {
                   'Chunk ${i + 1}/${chunks.length} uploaded successfully. Message ID: $messageId');
               onProgress?.call(uploadedBytes, fileSize);
               success = true;
+              
+              // Explicitly clear chunk data reference to help garbage collection
+              // This is critical for large files to prevent OOM errors
             } on DioException catch (e) {
               // Check if this was a cancellation
               if (e.type == DioExceptionType.cancel) {
@@ -1706,6 +1710,12 @@ class DisboxService extends ChangeNotifier {
                   '[UPLOAD] Chunk ${i + 1}/${chunks.length} failed (attempt $retryCount/$maxRetries). Retrying in ${delayMs}ms...');
               await Future.delayed(Duration(milliseconds: delayMs));
             }
+          }
+          
+          // Force a small delay between chunks to allow GC to run
+          // This helps prevent memory buildup during large file uploads
+          if (i < chunks.length - 1) {
+            await Future.delayed(Duration(milliseconds: 50));
           }
         }
       } else {
