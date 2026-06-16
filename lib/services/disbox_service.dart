@@ -380,6 +380,7 @@ class DisboxService extends ChangeNotifier {
     _totalUploadBytes = 0;
     _isUploading = false;
     _isUploadPaused = false;
+    _currentUploadCancelToken = null;
   }
   
   /// Clear download resume state after successful completion
@@ -1673,6 +1674,12 @@ class DisboxService extends ChangeNotifier {
                   'Chunk ${i + 1}/${chunks.length} uploaded successfully. Message ID: $messageId');
               onProgress?.call(uploadedBytes, fileSize);
               success = true;
+              
+              // FIX: Give the Flutter event loop a brief window to process network 
+              // responses and avoid UI thread starvation during heavy chunk sequences
+              if (i < chunks.length - 1) {
+                await Future.delayed(const Duration(milliseconds: 5));
+              }
             } on DioException catch (e) {
               // Check if this was a cancellation
               if (e.type == DioExceptionType.cancel) {
@@ -1741,12 +1748,6 @@ class DisboxService extends ChangeNotifier {
         rethrow;
       }
       rethrow;
-    } finally {
-      // Only clear state on successful completion, not on cancel
-      if (!_isUploadPaused) {
-        _isUploading = false;
-        _currentUploadCancelToken = null;
-      }
     }
 
     // Create metadata message to store file information
@@ -1791,6 +1792,9 @@ class DisboxService extends ChangeNotifier {
 
       // Notify listeners that the file tree has changed
       notifyListeners();
+
+      // Clear upload resume state after successful completion
+      _clearUploadResumeState();
 
       print('Upload complete: ${p.basename(file.path)} -> $filePath');
       return disboxFile;
