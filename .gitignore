@@ -1,38 +1,4 @@
 ```
-# Dart/Flutter specific
-.dart_tool/
-.packages
-*.g.dart
-*.freezed.dart
-
-# Dependencies
-.pub/
-.buildlog
-.flutter-plugins
-.flutter-plugin-dependencies
-
-# Compiled and build artifacts
-build/
-dist/
-
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
-.idea/
-*.iml
-*.ipr
-*.iws
-
-# OS generated files
-.DS_Store
-Thumbs.db
+# No build artifacts, dependencies, or temporary files detected in changes
+# Only source/config files (.md, .html) were added
 ```
