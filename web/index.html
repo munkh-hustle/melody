@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disbox - Discord Cloud Storage</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #5865F2 0%, #4752C4 100%);
+            color: white;
+            padding: 25px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .setup-section {
+            padding: 25px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .setup-section.hidden {
+            display: none;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #5865F2;
+        }
+
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #5865F2;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #4752C4;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .main-content {
+            padding: 25px;
+        }
+
+        .main-content.hidden {
+            display: none;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .file-list {
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+            background: white;
+            transition: background 0.2s;
+        }
+
+        .file-item:hover {
+            background: #f8f9fa;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-icon {
+            width: 40px;
+            height: 40px;
+            background: #5865F2;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            margin-right: 15px;
+            font-size: 18px;
+        }
+
+        .file-icon.folder {
+            background: #ffc107;
+        }
+
+        .file-info {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .file-meta {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .file-actions .btn {
+            padding: 8px 15px;
+            font-size: 12px;
+        }
+
+        .upload-area {
+            border: 2px dashed #5865F2;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9fa;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-area:hover {
+            background: #e9ecef;
+            border-color: #4752C4;
+        }
+
+        .upload-area.dragover {
+            background: #e7f3ff;
+            border-color: #007bff;
+        }
+
+        .upload-area p {
+            color: #6c757d;
+            margin-bottom: 10px;
+        }
+
+        .progress-container {
+            margin-top: 15px;
+            display: none;
+        }
+
+        .progress-container.active {
+            display: block;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #5865F2, #4752C4);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .progress-text {
+            font-size: 13px;
+            color: #6c757d;
+        }
+
+        .status-message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .status-message.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+        }
+
+        .status-message.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+
+        .breadcrumb {
+            padding: 10px 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            margin-bottom: 15px;
+            border-radius: 8px;
+        }
+
+        .breadcrumb-item {
+            color: #5865F2;
+            cursor: pointer;
+        }
+
+        .breadcrumb-item:hover {
+            text-decoration: underline;
+        }
+
+        .breadcrumb-separator {
+            color: #6c757d;
+            margin: 0 8px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        @media (max-width: 600px) {
+            .toolbar {
+                flex-direction: column;
+            }
+            
+            .file-item {
+                flex-wrap: wrap;
+            }
+            
+            .file-actions {
+                width: 100%;
+                margin-top: 10px;
+                justify-content: flex-end;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📦 Disbox</h1>
+            <p>Discord-based Cloud Storage for Windows</p>
+        </div>
+
+        <!-- Setup Section -->
+        <div id="setupSection" class="setup-section">
+            <h2 style="margin-bottom: 15px;">Setup Your Discord Webhook</h2>
+            <div class="form-group">
+                <label for="webhookUrl">Discord Webhook URL</label>
+                <input 
+                    type="url" 
+                    id="webhookUrl" 
+                    placeholder="https://discord.com/api/webhooks/..."
+                >
+            </div>
+            <button class="btn btn-primary" onclick="saveWebhook()">Connect to Discord</button>
+        </div>
+
+        <!-- Main Content -->
+        <div id="mainContent" class="main-content hidden">
+            <div id="statusMessage" class="status-message"></div>
+
+            <!-- Upload Area -->
+            <div class="upload-area" id="uploadArea">
+                <p>📁 Drag & drop files here or click to browse</p>
+                <p style="font-size: 12px;">Files are split into chunks and uploaded to your Discord channel</p>
+                <input type="file" id="fileInput" multiple style="display: none;" onchange="handleFileSelect(event)">
+                
+                <div id="uploadProgress" class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="uploadProgressFill"></div>
+                    </div>
+                    <div class="progress-text" id="uploadProgressText">Uploading...</div>
+                </div>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="toolbar">
+                <button class="btn btn-success" onclick="refreshFiles()">🔄 Refresh</button>
+                <button class="btn btn-secondary" onclick="disconnect()">Disconnect</button>
+            </div>
+
+            <!-- Breadcrumb -->
+            <div class="breadcrumb" id="breadcrumb">
+                <span class="breadcrumb-item" onclick="navigateToRoot()">🏠 Root</span>
+            </div>
+
+            <!-- File List -->
+            <div class="file-list" id="fileList">
+                <div class="empty-state">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/>
+                    </svg>
+                    <p>No files yet. Upload your first file!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Constants (matching Flutter app)
+        const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10 MB
+        const CHUNK_SIZE = 9 * 1024 * 1024; // 9 MB
+        const BOX_PREFIX = '[DISBOX]';
+        const MAX_CONTENT_LENGTH = 2000;
+
+        // State
+        let webhookUrl = null;
+        let webhookId = null;
+        let webhookToken = null;
+        let currentPath = '';
+        let fileTree = {};
+        let filesCache = {};
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSavedWebhook();
+            setupDragDrop();
+        });
+
+        function loadSavedWebhook() {
+            const saved = localStorage.getItem('disbox_webhook_url');
+            if (saved) {
+                document.getElementById('webhookUrl').value = saved;
+            }
+        }
+
+        function saveWebhook() {
+            const url = document.getElementById('webhookUrl').value.trim();
+            
+            if (!isValidWebhookUrl(url)) {
+                showStatus('Invalid webhook URL format', 'error');
+                return;
+            }
+
+            try {
+                const parts = url.split('/');
+                webhookId = parts[parts.length - 2];
+                webhookToken = parts[parts.length - 1];
+                webhookUrl = url;
+
+                localStorage.setItem('disbox_webhook_url', url);
+                
+                document.getElementById('setupSection').classList.add('hidden');
+                document.getElementById('mainContent').classList.remove('hidden');
+                
+                showStatus('Connected successfully!', 'success');
+                refreshFiles();
+            } catch (e) {
+                showStatus('Failed to parse webhook URL: ' + e.message, 'error');
+            }
+        }
+
+        function isValidWebhookUrl(url) {
+            const regex = /^https:\/\/discord\.com\/api\/webhooks\/\d+\/[\w-]+$/;
+            return regex.test(url);
+        }
+
+        function disconnect() {
+            localStorage.removeItem('disbox_webhook_url');
+            location.reload();
+        }
+
+        function setupDragDrop() {
+            const uploadArea = document.getElementById('uploadArea');
+            
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                const files = Array.from(e.dataTransfer.files);
+                uploadFiles(files);
+            });
+
+            uploadArea.addEventListener('click', () => {
+                document.getElementById('fileInput').click();
+            });
+        }
+
+        function handleFileSelect(event) {
+            const files = Array.from(event.target.files);
+            uploadFiles(files);
+            event.target.value = ''; // Reset for re-upload
+        }
+
+        async function uploadFiles(files) {
+            for (const file of files) {
+                await uploadFile(file);
+            }
+            refreshFiles();
+        }
+
+        async function uploadFile(file) {
+            const progressContainer = document.getElementById('uploadProgress');
+            const progressFill = document.getElementById('uploadProgressFill');
+            const progressText = document.getElementById('uploadProgressText');
+            
+            progressContainer.classList.add('active');
+            
+            try {
+                const fileSize = file.size;
+                const needsChunking = fileSize > MAX_ATTACHMENT_SIZE;
+                
+                let chunkIds = [];
+                let uploadedBytes = 0;
+
+                if (needsChunking) {
+                    // Split file into chunks
+                    const chunkCount = Math.ceil(fileSize / CHUNK_SIZE);
+                    
+                    for (let i = 0; i < chunkCount; i++) {
+                        const start = i * CHUNK_SIZE;
+                        const end = Math.min(start + CHUNK_SIZE, fileSize);
+                        const chunk = file.slice(start, end);
+                        
+                        const messageId = await uploadChunk(chunk, `${file.name}.part${i}`);
+                        chunkIds.push(messageId);
+                        
+                        uploadedBytes += chunk.size;
+                        const progress = (uploadedBytes / fileSize) * 100;
+                        progressFill.style.width = `${progress}%`;
+                        progressText.textContent = `Uploading chunk ${i + 1}/${chunkCount} (${formatBytes(uploadedBytes)}/${formatBytes(fileSize)})`;
+                    }
+                } else {
+                    // Upload as single file
+                    const messageId = await uploadChunk(file, file.name);
+                    chunkIds.push(messageId);
+                    uploadedBytes = fileSize;
+                }
+
+                // Create metadata message
+                progressText.textContent = 'Creating metadata...';
+                const metadataId = await createMetadataMessage({
+                    name: file.name,
+                    path: currentPath ? `${currentPath}/${file.name}` : file.name,
+                    size: fileSize,
+                    mimeType: file.type || 'application/octet-stream',
+                    chunkIds: chunkIds,
+                    isFolder: false
+                });
+
+                // Cache the file info
+                filesCache[metadataId] = {
+                    id: metadataId,
+                    name: file.name,
+                    path: currentPath ? `${currentPath}/${file.name}` : file.name,
+                    size: fileSize,
+                    mimeType: file.type || 'application/octet-stream',
+                    chunkIds: chunkIds,
+                    isFolder: false,
+                    createdAt: new Date().toISOString()
+                };
+
+                progressFill.style.width = '100%';
+                progressText.textContent = 'Upload complete!';
+                setTimeout(() => {
+                    progressContainer.classList.remove('active');
+                    progressFill.style.width = '0%';
+                }, 2000);
+
+                showStatus(`Uploaded ${file.name} successfully!`, 'success');
+            } catch (error) {
+                progressContainer.classList.remove('active');
+                showStatus(`Failed to upload ${file.name}: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        async function uploadChunk(chunk, filename) {
+            const formData = new FormData();
+            formData.append('file', chunk, filename);
+
+            const response = await fetch(`${webhookUrl}?wait=true`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error(`Upload failed: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data.id;
+        }
+
+        async function createMetadataMessage(metadata) {
+            const baseMetadata = {
+                type: 'disbox_metadata',
+                version: '1.0',
+                name: metadata.name,
+                path: metadata.path,
+                size: metadata.size,
+                mimeType: metadata.mimeType,
+                isFolder: metadata.isFolder,
+                createdAt: metadata.createdAt,
+                totalChunks: metadata.chunkIds.length
+            };
+
+            const avgChunkIdLength = metadata.chunkIds.length > 0 
+                ? metadata.chunkIds.reduce((sum, id) => sum + id.length, 0) / metadata.chunkIds.length 
+                : 19;
+            const reservedSpace = BOX_PREFIX.length + 1 + JSON.stringify({...baseMetadata, chunkIds: []}).length + 250;
+            const availableForChunkIds = MAX_CONTENT_LENGTH - reservedSpace;
+            const chunkIdsPerMessage = Math.floor(availableForChunkIds / (avgChunkIdLength + 3));
+
+            let messageId;
+
+            if (chunkIdsPerMessage <= 0 || metadata.chunkIds.length <= chunkIdsPerMessage) {
+                // All chunk IDs fit in one message
+                const fullMetadata = {...baseMetadata, chunkIds: metadata.chunkIds};
+                const response = await fetch(`${webhookUrl}?wait=true`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content: `${BOX_PREFIX} ${JSON.stringify(fullMetadata)}`
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to create metadata: ${response.status}`);
+                }
+
+                const data = await response.json();
+                messageId = data.id;
+            } else {
+                // Split across multiple messages
+                const batches = [];
+                for (let i = 0; i < metadata.chunkIds.length; i += chunkIdsPerMessage) {
+                    batches.push(metadata.chunkIds.slice(i, i + chunkIdsPerMessage));
+                }
+
+                for (let i = 0; i < batches.length; i++) {
+                    const batchMetadata = {
+                        ...baseMetadata,
+                        chunkIds: batches[i],
+                        batchIndex: i,
+                        totalBatches: batches.length,
+                        isLastBatch: i === batches.length - 1
+                    };
+
+                    if (!batchMetadata.isLastBatch) {
+                        delete batchMetadata.name;
+                        delete batchMetadata.path;
+                        delete batchMetadata.size;
+                        delete batchMetadata.mimeType;
+                        delete batchMetadata.isFolder;
+                        delete batchMetadata.createdAt;
+                    }
+
+                    const response = await fetch(`${webhookUrl}?wait=true`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            content: `${BOX_PREFIX} ${JSON.stringify(batchMetadata)}`
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Failed to create metadata batch ${i}: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    if (i === 0) {
+                        messageId = data.id;
+                    }
+                }
+            }
+
+            return messageId;
+        }
+
+        async function refreshFiles() {
+            try {
+                showStatus('Loading files...', 'success');
+                
+                // Fetch all messages from Discord
+                const response = await fetch(`${webhookUrl}/messages?limit=100`);
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch messages: ${response.status}`);
+                }
+
+                const messages = await response.json();
+                
+                // Parse metadata messages
+                const files = [];
+                const metadataMessages = new Map();
+
+                for (const msg of messages) {
+                    if (msg.content && msg.content.startsWith(BOX_PREFIX)) {
+                        try {
+                            const jsonStr = msg.content.substring(BOX_PREFIX.length).trim();
+                            const metadata = JSON.parse(jsonStr);
+                            
+                            if (metadata.type === 'disbox_metadata') {
+                                if (metadata.totalBatches && !metadata.isLastBatch) {
+                                    // This is a batch message, store it
+                                    if (!metadataMessages.has(msg.id)) {
+                                        metadataMessages.set(msg.id, { batches: [], base: metadata });
+                                    }
+                                    metadataMessages.get(msg.id).batches[metadata.batchIndex] = metadata.chunkIds;
+                                    metadataMessages.get(msg.id).base = { ...metadataMessages.get(msg.id).base, ...metadata };
+                                } else {
+                                    // Single message or last batch
+                                    files.push({
+                                        id: msg.id,
+                                        name: metadata.name,
+                                        path: metadata.path,
+                                        size: metadata.size,
+                                        mimeType: metadata.mimeType,
+                                        chunkIds: metadata.chunkIds,
+                                        isFolder: metadata.isFolder,
+                                        createdAt: metadata.createdAt
+                                    });
+                                }
+                            }
+                        } catch (e) {
+                            console.log('Failed to parse metadata:', e);
+                        }
+                    }
+                }
+
+                // Combine batch messages
+                for (const [msgId, data] of metadataMessages) {
+                    const allChunkIds = data.batches.flat();
+                    files.push({
+                        id: msgId,
+                        name: data.base.name,
+                        path: data.base.path,
+                        size: data.base.size,
+                        mimeType: data.base.mimeType,
+                        chunkIds: allChunkIds,
+                        isFolder: data.base.isFolder,
+                        createdAt: data.base.createdAt
+                    });
+                }
+
+                // Update cache
+                filesCache = {};
+                for (const file of files) {
+                    filesCache[file.id] = file;
+                }
+
+                // Filter files for current path and render
+                renderFileList(files);
+                showStatus(`Loaded ${files.length} files`, 'success');
+            } catch (error) {
+                showStatus('Failed to load files: ' + error.message, 'error');
+            }
+        }
+
+        function renderFileList(allFiles) {
+            const fileList = document.getElementById('fileList');
+            
+            // Filter files in current directory
+            const currentFiles = allFiles.filter(file => {
+                if (currentPath === '') {
+                    return !file.path.includes('/');
+                }
+                const parentPath = file.path.substring(0, file.path.lastIndexOf('/'));
+                return parentPath === currentPath;
+            });
+
+            if (currentFiles.length === 0) {
+                fileList.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/>
+                        </svg>
+                        <p>No files in this folder</p>
+                    </div>
+                `;
+                return;
+            }
+
+            fileList.innerHTML = currentFiles.map(file => `
+                <div class="file-item">
+                    <div class="file-icon ${file.isFolder ? 'folder' : ''}">
+                        ${file.isFolder ? '📁' : getFileIcon(file.mimeType)}
+                    </div>
+                    <div class="file-info">
+                        <div class="file-name">${escapeHtml(file.name)}</div>
+                        <div class="file-meta">${file.isFolder ? 'Folder' : formatBytes(file.size)} • ${new Date(file.createdAt).toLocaleDateString()}</div>
+                    </div>
+                    <div class="file-actions">
+                        ${!file.isFolder ? `<button class="btn btn-primary" onclick="downloadFile('${file.id}')">Download</button>` : ''}
+                        <button class="btn btn-danger" onclick="deleteFile('${file.id}')">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function getFileIcon(mimeType) {
+            if (mimeType.startsWith('image/')) return '🖼️';
+            if (mimeType.startsWith('video/')) return '🎬';
+            if (mimeType.startsWith('audio/')) return '🎵';
+            if (mimeType.includes('pdf')) return '📄';
+            if (mimeType.includes('word') || mimeType.includes('document')) return '📝';
+            if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return '📊';
+            if (mimeType.includes('powerpoint') || mimeType.includes('presentation')) return '📽️';
+            if (mimeType.includes('zip') || mimeType.includes('compressed')) return '📦';
+            if (mimeType.includes('text')) return '📃';
+            return '📄';
+        }
+
+        async function downloadFile(fileId) {
+            const file = filesCache[fileId];
+            if (!file) {
+                showStatus('File not found', 'error');
+                return;
+            }
+
+            try {
+                showStatus(`Downloading ${file.name}...`, 'success');
+
+                // Download all chunks
+                const chunks = [];
+                for (let i = 0; i < file.chunkIds.length; i++) {
+                    const messageId = file.chunkIds[i];
+                    
+                    // Fetch message to get attachment URL
+                    const msgResponse = await fetch(`${webhookUrl}/messages/${messageId}`);
+                    if (!msgResponse.ok) {
+                        throw new Error(`Failed to fetch chunk ${i}`);
+                    }
+                    
+                    const msgData = await msgResponse.json();
+                    if (!msgData.attachments || msgData.attachments.length === 0) {
+                        throw new Error(`No attachment in chunk ${i}`);
+                    }
+                    
+                    const attachmentUrl = msgData.attachments[0].url;
+                    
+                    // Download the actual chunk
+                    const chunkResponse = await fetch(attachmentUrl);
+                    if (!chunkResponse.ok) {
+                        throw new Error(`Failed to download chunk ${i}`);
+                    }
+                    
+                    const chunkBlob = await chunkResponse.blob();
+                    chunks.push({ index: i, data: chunkBlob });
+                }
+
+                // Sort chunks by index
+                chunks.sort((a, b) => a.index - b.index);
+
+                // Combine chunks into single blob
+                const combinedBlob = new Blob(chunks.map(c => c.data), { type: file.mimeType });
+                
+                // Create download link
+                const downloadUrl = URL.createObjectURL(combinedBlob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = file.name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(downloadUrl);
+
+                showStatus(`Downloaded ${file.name} successfully!`, 'success');
+            } catch (error) {
+                showStatus(`Failed to download ${file.name}: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteFile(fileId) {
+            const file = filesCache[fileId];
+            if (!file) {
+                showStatus('File not found', 'error');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to delete "${file.name}"?`)) {
+                return;
+            }
+
+            try {
+                // Delete all chunk messages
+                for (const chunkId of file.chunkIds) {
+                    await fetch(`${webhookUrl}/messages/${chunkId}`, {
+                        method: 'DELETE'
+                    });
+                }
+
+                // Delete metadata message
+                await fetch(`${webhookUrl}/messages/${fileId}`, {
+                    method: 'DELETE'
+                });
+
+                showStatus(`Deleted ${file.name} successfully!`, 'success');
+                refreshFiles();
+            } catch (error) {
+                showStatus(`Failed to delete ${file.name}: ${error.message}`, 'error');
+            }
+        }
+
+        function navigateToRoot() {
+            currentPath = '';
+            updateBreadcrumb();
+            refreshFiles();
+        }
+
+        function updateBreadcrumb() {
+            const breadcrumb = document.getElementById('breadcrumb');
+            if (currentPath === '') {
+                breadcrumb.innerHTML = '<span class="breadcrumb-item" onclick="navigateToRoot()">🏠 Root</span>';
+            } else {
+                const parts = currentPath.split('/');
+                let html = '<span class="breadcrumb-item" onclick="navigateToRoot()">🏠 Root</span>';
+                let pathSoFar = '';
+                
+                for (let i = 0; i < parts.length; i++) {
+                    pathSoFar += (i > 0 ? '/' : '') + parts[i];
+                    const currentPathTemp = pathSoFar;
+                    html += `<span class="breadcrumb-separator">/</span>`;
+                    html += `<span class="breadcrumb-item" onclick="navigateTo('${currentPathTemp}')">${parts[i]}</span>`;
+                }
+                
+                breadcrumb.innerHTML = html;
+            }
+        }
+
+        function navigateTo(path) {
+            currentPath = path;
+            updateBreadcrumb();
+            refreshFiles();
+        }
+
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status-message ${type}`;
+            
+            setTimeout(() => {
+                statusEl.className = 'status-message';
+            }, 5000);
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
