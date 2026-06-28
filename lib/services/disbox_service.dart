@@ -343,10 +343,7 @@ class DisboxService extends ChangeNotifier {
         }
         
         final messageId = file.chunkMessageIds[i];
-        final chunkData = await _downloadAttachment(
-          messageId,
-          cancelToken: _currentDownloadCancelToken,
-        );
+        final chunkData = await _downloadAttachment(messageId);
         chunks.add((i, chunkData));
         downloadedBytes += chunkData.length;
         
@@ -1655,16 +1652,11 @@ class DisboxService extends ChangeNotifier {
                 chunkData,
                 filename: '${filename}.part$i',
                 contentType: 'application/octet-stream',
-                cancelToken: _currentUploadCancelToken,
               );
 
               chunkMessageIds.add(messageId);
               uploadedBytes += chunkData.length;
               
-              // Track uploaded chunks for resume
-              _uploadedChunkIds.add(messageId);
-              _uploadedBytes = uploadedBytes;
-
               // Update progress stream
               final progress = uploadedBytes / fileSize;
               _uploadProgressController.add(progress);
@@ -1673,19 +1665,12 @@ class DisboxService extends ChangeNotifier {
                   'Chunk ${i + 1}/${chunks.length} uploaded successfully. Message ID: $messageId');
               onProgress?.call(uploadedBytes, fileSize);
               success = true;
-            } on DioException catch (e) {
-              // Check if this was a cancellation
-              if (e.type == DioExceptionType.cancel) {
-                print('[UPLOAD STOPPED] Upload intentionally stopped by user');
-                // Don't print stack trace for intentional stops
-                rethrow;
-              }
-              
+            } catch (e, stackTrace) {
               retryCount++;
               if (retryCount >= maxRetries) {
                 print(
                     '[UPLOAD ERROR] Failed to upload chunk ${i + 1}/${chunks.length} after $maxRetries retries: $e');
-                print('[UPLOAD ERROR] Stack Trace: ${e.stackTrace}');
+                print('[UPLOAD ERROR] Stack Trace: $stackTrace');
                 rethrow;
               }
               
@@ -1708,7 +1693,6 @@ class DisboxService extends ChangeNotifier {
             fileBytes,
             filename: filename,
             contentType: mimeType,
-            cancelToken: _currentUploadCancelToken,
           );
 
           chunkMessageIds.add(messageId);
@@ -1718,35 +1702,20 @@ class DisboxService extends ChangeNotifier {
 
           print('Single file uploaded successfully. Message ID: $messageId');
           onProgress?.call(fileSize, fileSize);
-        } on DioException catch (e) {
-          // Check if this was a cancellation
-          if (e.type == DioExceptionType.cancel) {
-            print('[UPLOAD STOPPED] Upload intentionally stopped by user');
-            // Don't print stack trace for intentional stops
-            rethrow;
-          }
-          
+        } catch (e, stackTrace) {
           print('[UPLOAD ERROR] Failed to upload single file: $e');
-          print('[UPLOAD ERROR] Stack Trace: ${e.stackTrace}');
+          print('[UPLOAD ERROR] Stack Trace: $stackTrace');
           rethrow;
         }
       }
-    } on DioException catch (e) {
-      // Handle cancellation gracefully - keep state for resume
-      if (e.type == DioExceptionType.cancel) {
-        print('[UPLOAD STOPPED] Upload intentionally stopped by user');
-        _isUploading = false;
-        _isUploadPaused = true; // Keep paused state for resume
-        // Don't cleanup chunks on manual stop - user can resume later
-        rethrow;
-      }
+    } catch (e, stackTrace) {
+      print('[UPLOAD ERROR] Upload failed: $e');
+      print('[UPLOAD ERROR] Stack Trace: $stackTrace');
+      _isUploading = false;
       rethrow;
     } finally {
-      // Only clear state on successful completion, not on cancel
-      if (!_isUploadPaused) {
-        _isUploading = false;
-        _currentUploadCancelToken = null;
-      }
+      _isUploading = false;
+      _currentUploadCancelToken = null;
     }
 
     // Create metadata message to store file information
@@ -1882,17 +1851,10 @@ class DisboxService extends ChangeNotifier {
 
         print('Downloading chunk ${i + 1}/${file.chunkMessageIds.length}');
 
-        final chunkData = await _downloadAttachment(
-          messageId,
-          cancelToken: _currentDownloadCancelToken,
-        );
+        final chunkData = await _downloadAttachment(messageId);
         chunks.add((i, chunkData));
         downloadedBytes += chunkData.length;
         
-        // Track downloaded chunks for resume
-        _downloadedChunkIndices.add(i);
-        _downloadedBytes = downloadedBytes;
-
         // Update progress stream
         final progress = totalBytes > 0 ? downloadedBytes / totalBytes : 0.0;
         _downloadProgressController.add(progress);
@@ -1910,20 +1872,10 @@ class DisboxService extends ChangeNotifier {
           'Download complete: $outputPath (${await File(outputPath).length()} bytes)');
 
       return File(outputPath);
-    } on DioException catch (e) {
-      // Handle cancellation gracefully - keep state for resume
-      if (e.type == DioExceptionType.cancel) {
-        print('[DOWNLOAD] Download was stopped/cancelled');
-        _isDownloading = false;
-        _isDownloadPaused = true; // Keep paused state for resume
-        // Don't cleanup partial download on manual cancel - user can resume
-        rethrow;
-      }
-      rethrow;
     } catch (e, stackTrace) {
       print('[DOWNLOAD ERROR] Failed to download file: $e');
       print('[DOWNLOAD ERROR] Stack Trace: $stackTrace');
-      // Cleanup partial download on error (not on cancel)
+      // Cleanup partial download on error
       try {
         final outFile = File(outputPath);
         if (await outFile.exists()) {
@@ -1936,11 +1888,8 @@ class DisboxService extends ChangeNotifier {
       }
       rethrow;
     } finally {
-      // Only clear state on successful completion, not on cancel
-      if (!_isDownloadPaused) {
-        _isDownloading = false;
-        _currentDownloadCancelToken = null;
-      }
+      _isDownloading = false;
+      _currentDownloadCancelToken = null;
     }
   }
 
