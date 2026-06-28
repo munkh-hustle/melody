@@ -791,26 +791,26 @@ class DisboxService extends ChangeNotifier {
           continue;
         }
         
-        // Get unique identifier for this file (use path or allMetadataIds)
-        final allMetadataIds = metadata['allMetadataIds'] as List?;
-        String fileId;
-        
-        if (allMetadataIds != null && allMetadataIds.isNotEmpty) {
-          // Use sorted allMetadataIds as key to group batches
-          final sortedIds = List<String>.from(allMetadataIds.cast<String>())..sort();
-          fileId = sortedIds.join('|');
-        } else {
-          // Use path as fallback identifier
-          fileId = metadata['path'] as String? ?? metadata['name'] as String? ?? '';
-        }
+        // Get unique identifier for this file
+        // Use a composite key from common properties across all batches of the same file.
+        // This is more reliable than allMetadataIds which is only present in the last batch.
+        // All batches for the same file share: size, totalChunks, createdAt, totalBatches
+        final size = metadata['size'];
+        final totalChunks = metadata['totalChunks'];
+        final createdAt = metadata['createdAt'];
+        final totalBatches = metadata['totalBatches'] ?? 1;
+        String fileId = '${size}_${totalChunks}_${createdAt}_${totalBatches}';
         
         if (!groupedMetadata.containsKey(fileId)) {
           groupedMetadata[fileId] = [];
         }
         groupedMetadata[fileId]!.add(metadata);
         
-        // Store base metadata from the last batch (which has name/path/mimeType)
-        fileBaseMetadata[fileId] = metadata;
+        // Store base metadata - prefer metadata with name/path (usually last batch)
+        if (!fileBaseMetadata.containsKey(fileId) || 
+            (metadata['name'] != null && metadata['path'] != null)) {
+          fileBaseMetadata[fileId] = metadata;
+        }
         
       } catch (e) {
         print('[IMPORT ERROR] Failed to parse metadata: $e');
@@ -826,6 +826,13 @@ class DisboxService extends ChangeNotifier {
       final batches = entry.value;
       
       try {
+        // Sort batches by batchIndex to ensure correct order
+        batches.sort((a, b) {
+          final aIndex = a['batchIndex'] as int? ?? 0;
+          final bIndex = b['batchIndex'] as int? ?? 0;
+          return aIndex.compareTo(bIndex);
+        });
+        
         // Merge all chunk IDs from all batches
         final allChunkIds = <String>[];
         for (final batch in batches) {
@@ -833,10 +840,7 @@ class DisboxService extends ChangeNotifier {
           allChunkIds.addAll(batchChunkIds);
         }
         
-        // Sort chunk IDs to maintain original order
-        allChunkIds.sort((a, b) => a.compareTo(b));
-        
-        // Get base metadata from the last batch (contains name, path, etc.)
+        // Get base metadata (should have name, path, etc. from last batch)
         final baseMetadata = fileBaseMetadata[fileId]!;
         
         // Create merged metadata

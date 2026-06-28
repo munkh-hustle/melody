@@ -1,38 +1,98 @@
-```
-# Dart/Flutter specific
-.dart_tool/
-.packages
-*.g.dart
-*.freezed.dart
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+*.class
+*.exe
+*.dll
+*.so
+*.a
+*.out
+*.jar
+*.war
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.gz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
 
 # Dependencies
-.pub/
-.buildlog
-.flutter-plugins
-.flutter-plugin-dependencies
-
-# Compiled and build artifacts
-build/
+node_modules/
+venv/
+.venv/
+.env
+.env.local
+.env.*
+target/
+.gradle/
+.mypy_cache/
+.pytest_cache/
+.nyc_output/
+coverage/
+htmlcov/
+.coverage
+.dart_tool/
+.build/
 dist/
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
-.idea/
-*.iml
-*.ipr
-*.iws
+*.swo
+*.bak
+*.orig
+*.rej
 
 # OS generated files
 .DS_Store
 Thumbs.db
-```
+ehthumbs.db
+Icon?
+.directory
+.Trashes
+*.DS_Store
+._*
+
+# Editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.sln
+*.csproj
+*.user
+*.userosscache
+*.suo
+*.pdb
+*.vcxproj.filters
+
+# Images (if accidentally added)
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.gif
+*.webm
+*.ico
+*.svg
+*.tiff
+*.tif
+*.webp
+*.avif
+*.apng
