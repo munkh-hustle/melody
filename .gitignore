@@ -1,19 +1,8 @@
 ```
-# Dart/Flutter specific
-.dart_tool/
-.packages
-*.g.dart
-*.freezed.dart
-
 # Dependencies
-.pub/
-.buildlog
-.flutter-plugins
-.flutter-plugin-dependencies
-
-# Compiled and build artifacts
-build/
-dist/
+.dart_tool/
+.build/
+.dependencies/
 
 # Logs and temp files
 *.log

@@ -3085,19 +3085,25 @@ class DisboxService extends ChangeNotifier {
     final baseJson = jsonEncode(baseMetadata);
     final baseWithEmptyChunks = jsonEncode({...baseMetadata, 'chunkIds': <String>[]});
     // Reserve space for: prefix, base JSON with empty chunks, allMetadataIds array (for last batch)
-    // allMetadataIds will contain ~10 message IDs of ~19 chars each = ~200 chars + brackets/commas
-    const int allMetadataIdsReserve = 250; 
-    final reservedSpace = prefix.length + baseWithEmptyChunks.length + allMetadataIdsReserve;
-    final availableForChunkIds = maxContentLength - reservedSpace;
-    
-    // Estimate average chunk ID length (they're typically ~19 characters for Discord snowflakes)
+    // allMetadataIds will contain message IDs - estimate based on expected number of batches
+    // First estimate how many batches we'll need
     final avgChunkIdLength = chunkMessageIds.isNotEmpty 
         ? chunkMessageIds.map((id) => id.length).reduce((a, b) => a + b) ~/ chunkMessageIds.length 
         : 19;
-    final chunkIdsPerMessage = (availableForChunkIds / (avgChunkIdLength + 3)).floor(); // +3 for quotes and comma
+    final charsPerChunkId = avgChunkIdLength + 3; // +3 for quotes and comma
+    final estimatedBatches = chunkMessageIds.isNotEmpty ? (chunkMessageIds.length / ((maxContentLength - prefix.length - baseWithEmptyChunks.length) ~/ charsPerChunkId)).ceil() : 1;
+    // allMetadataIds array size: [id1,id2,...] - each ID ~19 chars + comma, plus brackets
+    final allMetadataIdsReserve = estimatedBatches * (avgChunkIdLength + 2) + 2;
+    final reservedSpace = prefix.length + baseWithEmptyChunks.length + allMetadataIdsReserve;
+    final availableForChunkIds = maxContentLength - reservedSpace;
+    
+    print('[METADATA] Estimated batches: $estimatedBatches, allMetadataIds reserve: $allMetadataIdsReserve');
+    print('[METADATA] Reserved space: $reservedSpace, Available for chunk IDs: $availableForChunkIds');
+    
+    // Recalculate chunk IDs per message with actual available space
+    final chunkIdsPerMessage = availableForChunkIds > 0 ? (availableForChunkIds / charsPerChunkId).floor() : 0;
     
     print('[METADATA] Chunk IDs per message: $chunkIdsPerMessage');
-    print('[METADATA] Reserved space: $reservedSpace, Available for chunk IDs: $availableForChunkIds');
 
     try {
       if (chunkIdsPerMessage <= 0 || chunkMessageIds.length <= chunkIdsPerMessage) {
@@ -3312,8 +3318,9 @@ class DisboxService extends ChangeNotifier {
           }
         }
         
-        // Sort chunk IDs by their numeric value to maintain original order
-        allChunkIds.sort((a, b) => a.compareTo(b));
+        // Sort chunk IDs numerically to maintain original upload order
+        // Discord message IDs are numeric snowflakes, so we must sort as integers
+        allChunkIds.sort((a, b) => int.parse(a).compareTo(int.parse(b)));
       } else {
         // Fallback: Try to find the last batch which should have allMetadataIds
         // or reconstruct by iterating through all batch indices
@@ -3390,8 +3397,8 @@ class DisboxService extends ChangeNotifier {
                 allChunkIds.addAll(batchIds);
               }
               
-              // Sort chunk IDs by their numeric value to maintain original order
-              allChunkIds.sort((a, b) => a.compareTo(b));
+              // Sort chunk IDs numerically to maintain original upload order
+              allChunkIds.sort((a, b) => int.parse(a).compareTo(int.parse(b)));
             } else {
               print('[PARSE WARNING] Only found ${batchMessages.length} of $totalBatches batches');
               allChunkIds = batchChunkIds;
