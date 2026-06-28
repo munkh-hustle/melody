@@ -1,10 +1,10 @@
 {
   "roots": [
-    "MuunuXD"
+    "muunuxd"
   ],
   "packages": [
     {
-      "name": "MuunuXD",
+      "name": "muunuxd",
       "version": "1.0.0+1",
       "dependencies": [
         "crypto",
